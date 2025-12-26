@@ -1,0 +1,53 @@
+# cost_calculations.py
+
+def calculate_total_cost(quantities, prices):
+    """
+    Oblicza całkowity kosztorys na podstawie ilości i cen.
+
+    Args:
+        quantities (dict): Słownik z obliczonymi ilościami materiałów.
+        prices (dict): Słownik z cenami jednostkowymi.
+
+    Returns:
+        dict: Słownik z kosztami dla każdej pozycji i kosztem całkowitym.
+    """
+    costs = {}
+    total_cost = 0.0
+
+    # 1. Papa/Pokrycie
+    felt_cost = quantities.get("felt_surface", 0.0) * prices.get("felt_price_per_m2", 0.0)
+    costs["felt_total"] = felt_cost
+    total_cost += felt_cost
+
+    # 2. Obróbki Blacharskie
+    costs["flashings"] = {}
+    flashings_total = 0.0
+    for name, qty in quantities.get("flashings", {}).items():
+        price = prices.get("flashings", {}).get(name, 0.0)
+        cost = qty * price
+        costs["flashings"][name] = cost
+        flashings_total += cost
+    costs["flashings_total"] = flashings_total
+    total_cost += flashings_total
+
+    # 3. Orynnowanie
+    gutter_cost = quantities.get("gutter_length", 0.0) * prices.get("gutter_price_per_mb", 0.0)
+    costs["gutter_total"] = gutter_cost
+    total_cost += gutter_cost
+    
+    downpipe_cost = quantities.get("downpipes_count", 0) * prices.get("downpipes_price_per_piece", 0.0)
+    costs["downpipe_total"] = downpipe_cost
+    total_cost += downpipe_cost
+
+    # 4. Więźba
+    timber_cost = quantities.get("timber_volume", 0.0) * prices.get("timber_price_per_m3", 0.0)
+    costs["timber_total"] = timber_cost
+    total_cost += timber_cost
+
+    # 5. Kominy
+    chimney_cost = quantities.get("chimney_count", 0) * prices.get("chimney_price_per_piece", 0.0)
+    costs["chimney_total"] = chimney_cost
+    total_cost += chimney_cost
+    
+    costs["total_cost"] = total_cost
+    return costs

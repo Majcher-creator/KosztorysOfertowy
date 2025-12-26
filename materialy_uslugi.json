@@ -1,0 +1,16 @@
+[
+  {
+    "name": "Papa nawierzchniowa",
+    "unit": "m2",
+    "price_unit_net": 28.6,
+    "vat_rate": 8,
+    "category": "material"
+  },
+  {
+    "name": "Blacha plaska 1,25x2,0 c.braz mat",
+    "unit": "ark.",
+    "price_unit_net": 98.0,
+    "vat_rate": 8,
+    "category": "material"
+  }
+]
