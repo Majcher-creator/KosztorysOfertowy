@@ -1483,7 +1483,12 @@ class RoofCalculatorApp:
         """Fallback calculation for single slope roof"""
         if is_real:
             return {"powierzchnia_dachu": dl * szer, "dlugosc_okapu": dl, "dlugosc_gasiorow": 0.0, "dlugosc_wiatrownic": 2*szer, "dlugosc_koszy": 0.0, "slant_rafter_length": szer}
-        slant_szer = szer / math.cos(math.radians(angle)) if angle and angle != 90 else szer
+        # Protect against division by zero for angles near 90 degrees
+        if angle and angle < 89.5:  # Practical limit for roof angles
+            cos_val = math.cos(math.radians(angle))
+            slant_szer = szer / cos_val if cos_val > 0.01 else szer * 100  # Cap at practical maximum
+        else:
+            slant_szer = szer
         return {"powierzchnia_dachu": dl * slant_szer, "dlugosc_okapu": dl, "dlugosc_gasiorow": 0.0, "dlugosc_wiatrownic": 2*slant_szer, "dlugosc_koszy": 0.0, "slant_rafter_length": slant_szer}
     
     def _calc_gable_roof(self, dl, szer, angle, is_real):
@@ -1491,12 +1496,22 @@ class RoofCalculatorApp:
         if is_real:
             return {"powierzchnia_dachu": 2 * dl * szer, "dlugosc_okapu": 2*dl, "dlugosc_gasiorow": dl, "dlugosc_wiatrownic": 4*szer, "dlugosc_koszy": 0.0, "slant_rafter_length": szer}
         half_szer = szer / 2
-        slant_krokiew = half_szer / math.cos(math.radians(angle)) if angle and angle != 90 else half_szer
+        # Protect against division by zero for angles near 90 degrees
+        if angle and angle < 89.5:  # Practical limit for roof angles
+            cos_val = math.cos(math.radians(angle))
+            slant_krokiew = half_szer / cos_val if cos_val > 0.01 else half_szer * 100
+        else:
+            slant_krokiew = half_szer
         return {"powierzchnia_dachu": 2 * dl * slant_krokiew, "dlugosc_okapu": 2*dl, "dlugosc_gasiorow": dl, "dlugosc_wiatrownic": 4*slant_krokiew, "dlugosc_koszy": 0.0, "slant_rafter_length": slant_krokiew}
     
     def _calc_hip_roof(self, dl, szer, angle):
         """Fallback calculation for hip roof"""
-        slant = (szer/2) / math.cos(math.radians(angle)) if angle and angle != 90 else szer/2
+        # Protect against division by zero for angles near 90 degrees
+        if angle and angle < 89.5:  # Practical limit for roof angles
+            cos_val = math.cos(math.radians(angle))
+            slant = (szer/2) / cos_val if cos_val > 0.01 else (szer/2) * 100
+        else:
+            slant = szer/2
         area_triangles = 2 * (0.5 * szer * slant)
         kalenica = max(0, dl - szer)
         area_trapezoids = 2 * (0.5 * (kalenica + dl) * slant)
