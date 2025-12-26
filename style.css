@@ -1,26 +1,60 @@
 /* Ustawienia ogólne dla dokumentu A4 */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+
+:root {
+    --primary-color: #2C3E50;
+    --accent-color: #E67E22;
+    --success-color: #27AE60;
+    --light-bg: #ECF0F1;
+    --white: #FFFFFF;
+    --text-dark: #2C3E50;
+    --text-light: #7F8C8D;
+    --border-color: #BDC3C7;
+    --table-header: #FCD5B4;
+}
+
 body {
-    font-family: Calibri, sans-serif; /* Czcionka podobna do tej z obrazka */
+    font-family: 'Roboto', 'Segoe UI', Calibri, sans-serif;
     font-size: 10pt;
     width: 210mm;
     margin: 10mm;
-    box-sizing: border-box; /* Ważne dla WeasyPrint */
+    box-sizing: border-box;
+    color: var(--text-dark);
+    line-height: 1.4;
 }
 
 /* Nagłówek z tytułem i danymi */
 header {
     display: flex;
     justify-content: space-between;
-    border-bottom: 2px solid black;
-    padding-bottom: 10px;
+    border-bottom: 3px solid var(--accent-color);
+    padding-bottom: 15px;
+    margin-bottom: 20px;
 }
+
 header .document-title {
     text-align: center;
     flex-grow: 1;
 }
+
 header h1 {
     margin: 0;
-    font-size: 16pt;
+    font-size: 18pt;
+    color: var(--primary-color);
+    font-weight: 700;
+}
+
+header .subtitle {
+    margin: 5px 0 0 0;
+    font-size: 10pt;
+    color: var(--accent-color);
+    font-weight: 500;
+}
+
+header .service-details,
+header .document-details {
+    font-size: 9pt;
+    color: var(--text-dark);
 }
 
 /* Sekcja Klient / Wykonawca */
@@ -28,43 +62,68 @@ header h1 {
     display: flex;
     justify-content: space-between;
     margin-top: 15px;
-    margin-bottom: 15px;
+    margin-bottom: 20px;
+    gap: 20px;
 }
+
 .parties h3 {
     margin-top: 0;
+    margin-bottom: 10px;
     font-size: 11pt;
+    color: var(--primary-color);
+    border-bottom: 2px solid var(--accent-color);
+    padding-bottom: 5px;
 }
+
 .parties p {
-    margin-bottom: 0;
+    margin: 0;
+    font-size: 9pt;
+    line-height: 1.5;
 }
-.client {
+
+.client, .contractor {
     width: 48%;
+    background: var(--light-bg);
+    padding: 12px;
+    border-radius: 5px;
 }
+
 .contractor {
-    width: 48%;
     text-align: right;
+}
+
+/* Nagłówki sekcji */
+h3 {
+    color: var(--accent-color);
+    font-size: 12pt;
+    font-weight: 600;
+    margin: 15px 0 10px 0;
+    padding-bottom: 5px;
+    border-bottom: 2px solid var(--accent-color);
 }
 
 /* Tabela z materiałami / robocizną */
 .items-table {
     width: 100%;
-    border-collapse: collapse; /* Łączy ramki komórek */
+    border-collapse: collapse;
     margin-bottom: 20px;
+    font-size: 9pt;
 }
 
 .items-table th, .items-table td {
-    border: 1px solid #000;
-    padding: 3px 5px;
+    border: 1px solid var(--border-color);
+    padding: 6px 8px;
     text-align: left;
 }
 
 .items-table thead th {
-    background-color: #FCD5B4; /* Przybliżony kolor pomarańczowy/złoty */
-    font-weight: bold;
+    background-color: var(--table-header);
+    font-weight: 600;
+    color: var(--primary-color);
 }
 
 /* Ustawienie szerokości kolumn */
-.items-table th:nth-child(1) { width: 5%; }
+.items-table th:nth-child(1) { width: 5%; text-align: center; }
 .items-table th:nth-child(2) { width: 45%; }
 .items-table th:nth-child(3) { width: 10%; }
 .items-table th:nth-child(4) { width: 10%; }
@@ -72,6 +131,7 @@ header h1 {
 .items-table th:nth-child(6) { width: 15%; }
 
 /* Wyrównanie dla kolumn liczbowych */
+.items-table td:nth-child(1) { text-align: center; }
 .items-table td:nth-child(3),
 .items-table td:nth-child(4),
 .items-table td:nth-child(5),
@@ -79,59 +139,140 @@ header h1 {
     text-align: right;
 }
 
+/* Alternatywne wiersze */
+.items-table tbody tr:nth-child(even) {
+    background-color: #FAFAFA;
+}
+
+.items-table tbody tr:hover {
+    background-color: #FFF9F2;
+}
+
 /* Stopka tabeli (podsumowanie) */
 .items-table tfoot td {
-    font-weight: bold;
-    background-color: #F2F2F2; /* Jasnoszary */
+    font-weight: 600;
+    background-color: #F2F2F2;
 }
+
 .items-table tfoot .hidden {
-    border: none; /* Ukrywa ramki dla pustych komórek */
-    background-color: #FFF;
+    border: none;
+    background-color: var(--white);
 }
+
 .items-table tfoot .summary-label {
     text-align: right;
+    background-color: #F2F2F2;
 }
+
 .items-table tfoot .summary-value {
     text-align: right;
+    background-color: #F2F2F2;
+}
+
+.items-table tfoot .summary-value.highlight {
+    background-color: #E8F6F3;
+    color: var(--success-color);
+    font-weight: 700;
 }
 
 /* Stopka dokumentu (Komentarze i Podsumowanie) */
 footer {
     display: flex;
     justify-content: space-between;
-    margin-top: 20px;
+    margin-top: 25px;
     font-size: 9pt;
+    gap: 20px;
 }
+
 .comments {
-    width: 65%;
+    width: 58%;
 }
+
+.comments strong {
+    color: var(--primary-color);
+}
+
 .comment-box {
-    border: 1px solid black;
-    height: 50px;
-    margin: 5px 0;
+    border: 1px solid var(--border-color);
+    min-height: 50px;
+    margin: 8px 0;
+    padding: 8px;
+    background: var(--white);
+    border-radius: 4px;
 }
+
+.comments .footnote {
+    font-size: 8pt;
+    color: var(--text-light);
+    margin: 3px 0;
+}
+
 .final-summary {
-    width: 33%;
+    width: 38%;
     text-align: right;
+    background: var(--light-bg);
+    padding: 12px;
+    border-radius: 5px;
 }
+
+.final-summary strong {
+    color: var(--primary-color);
+    display: block;
+    margin-bottom: 10px;
+}
+
 .final-summary p {
-    margin: 4px 0;
-    font-weight: bold;
+    margin: 6px 0;
+    font-weight: 500;
 }
+
 .final-summary p span {
     display: inline-block;
-    width: 100px; /* Stała szerokość dla wyrównania */
+    width: 110px;
     text-align: right;
     margin-left: 10px;
+    font-weight: 600;
 }
+
+.final-summary p.total {
+    font-size: 11pt;
+    color: var(--success-color);
+    font-weight: 700;
+    background: var(--white);
+    padding: 8px;
+    margin-top: 10px;
+    border-radius: 4px;
+}
+
 .final-summary hr {
     border: 0;
-    border-top: 1px solid black;
+    border-top: 2px solid var(--accent-color);
+    margin: 10px 0;
 }
 
 .final-footer {
-    margin-top: 20px;
+    margin-top: 25px;
     text-align: center;
-    font-weight: bold;
-    font-size: 12pt;
+    font-weight: 700;
+    font-size: 14pt;
+    color: var(--accent-color);
+    padding: 15px;
+    border-top: 3px solid var(--accent-color);
+    background: linear-gradient(to right, var(--light-bg), var(--white), var(--light-bg));
+}
+
+/* Print styles */
+@media print {
+    body {
+        margin: 0;
+        padding: 10mm;
+    }
+    
+    .items-table {
+        page-break-inside: avoid;
+    }
+    
+    .final-footer {
+        page-break-inside: avoid;
+    }
 }
