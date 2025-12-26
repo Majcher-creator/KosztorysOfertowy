@@ -2,39 +2,42 @@
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <title>Kosztorys</title>
+    <title>Kosztorys Ofertowy</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
     <header>
         <div class="service-details">
-            Nazwa usługi: {{ nazwa_uslugi }}<br>
-            Metraż dachu: {{ metraz }} m²
+            <strong>Nazwa usługi:</strong> {{ nazwa_uslugi }}<br>
+            <strong>Metraż dachu:</strong> {{ metraz }} m²
         </div>
         <div class="document-title">
-            <h1>Kosztorys ofertowy</h1>
+            <h1>Kosztorys Ofertowy</h1>
+            <p class="subtitle">TYLKO DACHY TYLKO VICTOR</p>
         </div>
         <div class="document-details">
-            Nr Kosztorysu: {{ nr_kosztorysu }}<br>
-            Data wystaw: {{ data_wystawienia }}
+            <strong>Nr Kosztorysu:</strong> {{ nr_kosztorysu }}<br>
+            <strong>Data wystawienia:</strong> {{ data_wystawienia }}<br>
+            <strong>Ważność oferty:</strong> 30 dni
         </div>
     </header>
 
     <section class="parties">
         <div class="client">
-            <h3>Klient</h3>
+            <h3>👤 Klient</h3>
             <p>
-                Nazwa: {{ klient.nazwa }}<br>
-                Adres: {{ klient.adres }}<br>
-                Misto: {{ klient.miasto }}<br>
+                <strong>{{ klient.nazwa }}</strong><br>
+                {{ klient.adres }}<br>
+                {{ klient.miasto }}<br>
                 Tel: {{ klient.tel }}<br>
                 NIP: {{ klient.nip }}
             </p>
         </div>
         <div class="contractor">
-            <h3>VICTOR TOMASZ MAJCHERCZYK</h3>
+            <h3>🏠 Wykonawca</h3>
             <p>
+                <strong>VICTOR TOMASZ MAJCHERCZYK</strong><br>
                 Reymonta 1/1<br>
                 Dąbrowa Górnicza 41-300<br>
                 (32)262-34-21, 505-438-585<br>
@@ -44,7 +47,7 @@
         </div>
     </section>
 
-    <h3>MATERIAŁ</h3>
+    <h3>🧱 MATERIAŁ</h3>
     <table class="items-table">
         <thead>
             <tr>
@@ -92,12 +95,12 @@
             <tr>
                 <td colspan="4" class="hidden"></td>
                 <td class="summary-label">SUMA BRUTTO</td>
-                <td class="summary-value">{{ "%.2f zł"|format(podsumowanie.material_brutto) }}</td>
+                <td class="summary-value highlight">{{ "%.2f zł"|format(podsumowanie.material_brutto) }}</td>
             </tr>
         </tfoot>
     </table>
 
-    <h3>ROBOCIZNA</h3>
+    <h3>🔧 ROBOCIZNA</h3>
     <table class="items-table">
        <thead>
             <tr>
@@ -145,34 +148,34 @@
             <tr>
                 <td colspan="4" class="hidden"></td>
                 <td class="summary-label">SUMA BRUTTO</td>
-                <td class="summary-value">{{ "%.2f zł"|format(podsumowanie.robocizna_brutto) }}</td>
+                <td class="summary-value highlight">{{ "%.2f zł"|format(podsumowanie.robocizna_brutto) }}</td>
             </tr>
         </tfoot>
     </table>
 
     <footer>
         <div class="comments">
-            <strong>Komentarz:</strong>
+            <strong>📝 Komentarz:</strong>
             <div class="comment-box">
                 <p>{{ komentarz }}</p>
             </div>
-            <p>RAZEM = Materiał** + Robocizna** + Transport*** z VAT</p>
-            <p><small>* Transport pionowy, Praca sprzętu, Materiały pomocnicze i Koszty zakupu = 3% od Wartości min 100zł</small></p>
-            <p><small>** Cena bez utylizacji odpadów</small></p>
-            <p><small>*** Ceny materiałów mogą ulec zmianie</small></p>
+            <p class="footnote">* Transport pionowy, Praca sprzętu, Materiały pomocnicze i Koszty zakupu = 3% od Wartości (min 100 zł)</p>
+            <p class="footnote">** Cena bez utylizacji odpadów</p>
+            <p class="footnote">*** Ceny materiałów mogą ulec zmianie</p>
         </div>
         <div class="final-summary">
-            <strong>Podsumowanie:</strong>
+            <strong>💰 Podsumowanie:</strong>
             <p>MATERIAŁ** <span>{{ "%.2f zł"|format(podsumowanie.material_brutto) }}</span></p>
             <p>ROBOCIZNA** <span>{{ "%.2f zł"|format(podsumowanie.robocizna_brutto) }}</span></p>
             <p>TRANSPORT*** <span>{{ "%.2f zł"|format(podsumowanie.transport) }}</span></p>
             <hr>
             <p>RAZEM NETTO <span>{{ "%.2f zł"|format(podsumowanie.razem_netto) }}</span></p>
-            <p>RAZEM BRUTTO <span>{{ "%.2f zł"|format(podsumowanie.razem_brutto) }}</span></p>
+            <p class="total">RAZEM BRUTTO <span>{{ "%.2f zł"|format(podsumowanie.razem_brutto) }}</span></p>
         </div>
     </footer>
+    
     <div class="final-footer">
-        TYLKO DACHY TYLKO VICTOR
+        🏠 TYLKO DACHY TYLKO VICTOR 🏠
     </div>
 
 </body>

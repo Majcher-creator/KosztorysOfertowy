@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
-# main_app045.py
-# Kalkulator Dachów - v4.5
+# main_app046.py
+# Kalkulator Dachów - v4.6
 # Zmiany:
-# - Przechowywanie ostatniego numeru kosztorysu w settings.json (klucz last_invoice_seq i last_invoice_year).
-#   Dzięki temu numer jest generowany szybko i niezawodnie bez parsowania katalogu.
-# - Poprawka błędu AttributeError: missing calculate_cost_estimation (metoda dodana).
-# - Pełny, zaktualizowany plik aplikacji z wszystkimi funkcjami poprzednich wersji.
+# - Ulepszony UI z nowoczesnym stylem i lepszymi kolorami
+# - Dodano zakładki do obliczeń dachowych (pomiar, rynny, kominy, obróbki, drewno)
+# - Ulepszony eksport PDF z profesjonalnym wyglądem
+# - Lepsza walidacja danych wejściowych i UX
+# - Przechowywanie ostatniego numeru kosztorysu w settings.json
 #
 # Wymagane (opcjonalne do PDF/logo): pip install reportlab pillow
 #
-# Uruchom: python3.12 main_app045.py
+# Uruchom: python3.12 main_app046.py
 
 from typing import List, Dict, Any, Optional
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog, filedialog
-import json, os, csv, platform, subprocess, re
+import json, os, csv, platform, subprocess, re, math
 from datetime import datetime
 
 # Pillow for logo preview (optional)
@@ -37,6 +38,37 @@ try:
 except Exception:
     REPORTLAB_AVAILABLE = False
 
+# Import calculation modules
+try:
+    from roof_calculations import calculate_single_slope_roof, calculate_gable_roof, calculate_hip_roof
+    from gutter_calculations import calculate_guttering
+    from chimney_calculations import calculate_chimney_flashings, calculate_chimney_insulation
+    from flashing_calculations import calculate_flashings_total
+    from timber_calculations import calculate_timber_volume
+    from felt_calculations import calculate_felt_roof
+    CALC_MODULES_AVAILABLE = True
+except ImportError:
+    CALC_MODULES_AVAILABLE = False
+
+# ---------------- Color Theme ----------------
+# Modern color palette for roofing application
+COLORS = {
+    'primary': '#2C3E50',        # Dark blue-gray for headers
+    'secondary': '#34495E',      # Lighter blue-gray
+    'accent': '#E67E22',         # Orange accent (roof tiles color)
+    'accent_dark': '#D35400',    # Darker orange
+    'success': '#27AE60',        # Green for success
+    'warning': '#F39C12',        # Yellow for warnings
+    'danger': '#E74C3C',         # Red for errors
+    'bg_light': '#ECF0F1',       # Light gray background
+    'bg_white': '#FFFFFF',       # White
+    'text_dark': '#2C3E50',      # Dark text
+    'text_light': '#7F8C8D',     # Light gray text
+    'border': '#BDC3C7',         # Border color
+    'table_header': '#FCD5B4',   # Table header (warm orange)
+    'table_alt': '#FFF9F2',      # Alternate row color
+}
+
 # ---------------- Helpers ----------------
 def fmt_money_plain(v: float) -> str:
     s = f"{v:,.2f}"
@@ -49,6 +81,89 @@ def is_valid_float_text(s: str) -> bool:
     if s == "" or s == "-" or s == ".": return True
     s = s.replace(",", ".")
     return bool(re.match(r'^\d+(\.\d{0,3})?$', s))
+
+def apply_modern_style(root):
+    """Apply modern styling to ttk widgets."""
+    style = ttk.Style(root)
+    style.theme_use('clam')  # Use clam theme as base
+    
+    # Configure general styles
+    style.configure('TFrame', background=COLORS['bg_light'])
+    style.configure('TLabel', background=COLORS['bg_light'], foreground=COLORS['text_dark'], font=('Segoe UI', 10))
+    style.configure('TLabelframe', background=COLORS['bg_light'], foreground=COLORS['text_dark'])
+    style.configure('TLabelframe.Label', background=COLORS['bg_light'], foreground=COLORS['primary'], font=('Segoe UI', 11, 'bold'))
+    
+    # Configure buttons
+    style.configure('TButton', 
+                    background=COLORS['primary'], 
+                    foreground=COLORS['bg_white'],
+                    padding=(10, 5),
+                    font=('Segoe UI', 10))
+    style.map('TButton', 
+              background=[('active', COLORS['secondary']), ('pressed', COLORS['accent_dark'])])
+    
+    # Accent button style
+    style.configure('Accent.TButton', 
+                    background=COLORS['accent'],
+                    foreground=COLORS['bg_white'],
+                    padding=(12, 6),
+                    font=('Segoe UI', 10, 'bold'))
+    style.map('Accent.TButton', 
+              background=[('active', COLORS['accent_dark'])])
+    
+    # Success button style
+    style.configure('Success.TButton', 
+                    background=COLORS['success'],
+                    foreground=COLORS['bg_white'],
+                    padding=(10, 5),
+                    font=('Segoe UI', 10))
+    style.map('Success.TButton', 
+              background=[('active', '#229954')])
+    
+    # Configure entries
+    style.configure('TEntry', 
+                    fieldbackground=COLORS['bg_white'],
+                    borderwidth=2,
+                    relief='flat')
+    
+    # Configure comboboxes
+    style.configure('TCombobox', 
+                    fieldbackground=COLORS['bg_white'],
+                    background=COLORS['bg_white'])
+    
+    # Configure notebooks/tabs
+    style.configure('TNotebook', background=COLORS['bg_light'])
+    style.configure('TNotebook.Tab', 
+                    background=COLORS['bg_light'],
+                    foreground=COLORS['text_dark'],
+                    padding=(15, 8),
+                    font=('Segoe UI', 10))
+    style.map('TNotebook.Tab',
+              background=[('selected', COLORS['accent']), ('active', COLORS['secondary'])],
+              foreground=[('selected', COLORS['bg_white']), ('active', COLORS['bg_white'])])
+    
+    # Configure Treeview
+    style.configure('Treeview',
+                    background=COLORS['bg_white'],
+                    foreground=COLORS['text_dark'],
+                    fieldbackground=COLORS['bg_white'],
+                    rowheight=28,
+                    font=('Segoe UI', 10))
+    style.configure('Treeview.Heading',
+                    background=COLORS['table_header'],
+                    foreground=COLORS['text_dark'],
+                    font=('Segoe UI', 10, 'bold'))
+    style.map('Treeview',
+              background=[('selected', COLORS['accent'])],
+              foreground=[('selected', COLORS['bg_white'])])
+    
+    # Configure Panedwindow
+    style.configure('TPanedwindow', background=COLORS['bg_light'])
+    
+    # Configure Separator
+    style.configure('TSeparator', background=COLORS['border'])
+    
+    return style
 
 def find_system_font_possibilities() -> Optional[str]:
     candidates = [
@@ -216,8 +331,13 @@ class MaterialEditDialog(simpledialog.Dialog):
 class RoofCalculatorApp:
     def __init__(self, master):
         self.master = master
-        master.title("Kalkulator Dachów - v4.5")
-        master.geometry("1280x940")
+        master.title("🏠 Kalkulator Dachów - v4.6")
+        master.geometry("1400x980")
+        master.configure(bg=COLORS['bg_light'])
+        
+        # Apply modern styling
+        self.style = apply_modern_style(master)
+        
         # data stores
         self.clients: List[Dict[str,Any]] = []
         self.materials_db: List[Dict[str,Any]] = []
@@ -231,13 +351,22 @@ class RoofCalculatorApp:
         self.invoice_date = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
         self.roof_area = tk.StringVar(value="0.00")
         self.quote_name = tk.StringVar(value="")
+        self.validity_days = tk.IntVar(value=30)
+        
+        # Roof measurement variables
+        self.roof_type = tk.StringVar(value="dwuspadowy")
+        self.roof_length = tk.DoubleVar(value=10.0)
+        self.roof_width = tk.DoubleVar(value=8.0)
+        self.roof_angle = tk.DoubleVar(value=30.0)
+        self.is_real_dimensions = tk.BooleanVar(value=False)
+        
         # company defaults
         self.settings = {
             "company_name": "VICTOR TOMASZ MAJCHERCZYK",
-            "company_address": "Reymonta 1/1, Dąbrowa Górnicza",
-            "company_nip": "629-225-54-24",
-            "company_phone": "555-555-555",
-            "company_email": "victor.dachy@example.com",
+            "company_address": "Reymonta 1/1, Dąbrowa Górnicza 41-300",
+            "company_nip": "625-227-54-24",
+            "company_phone": "(32)262-34-21, 505-438-585",
+            "company_email": "dachy_daw@gmail.com",
             "company_account": "14 2000 0000 0000 0000 0000 000",
             # maintained keys:
             "last_invoice_year": None,
@@ -256,7 +385,14 @@ class RoofCalculatorApp:
         # load db/settings
         self._load_local_db(); self._load_settings()
         # build UI
-        self.create_menu(); self.create_notebook(); self.create_cost_tab()
+        self.create_header_bar()
+        self.create_menu()
+        self.create_notebook()
+        self.create_cost_tab()
+        self.create_measurement_tab()
+        self.create_gutter_tab()
+        self.create_chimney_tab()
+        self.create_flashing_tab()
         # set next invoice number on startup (uses settings.json stored sequence)
         self._set_next_invoice_number()
 
@@ -327,6 +463,36 @@ class RoofCalculatorApp:
         seq = self._get_next_seq_and_set()
         year = datetime.now().year
         self.invoice_number.set(f"{year}-{seq:03d}")
+
+    # header bar with company info and quick actions
+    def create_header_bar(self):
+        header = tk.Frame(self.master, bg=COLORS['primary'], height=60)
+        header.pack(fill='x', side='top')
+        header.pack_propagate(False)
+        
+        # Left side - logo area and title
+        left = tk.Frame(header, bg=COLORS['primary'])
+        left.pack(side='left', padx=15, pady=8)
+        
+        title_lbl = tk.Label(left, text="🏠 KALKULATOR DACHÓW", 
+                            font=('Segoe UI', 16, 'bold'),
+                            fg=COLORS['bg_white'], bg=COLORS['primary'])
+        title_lbl.pack(side='left')
+        
+        subtitle = tk.Label(left, text="v4.6 - Kosztorys Ofertowy",
+                           font=('Segoe UI', 10),
+                           fg=COLORS['border'], bg=COLORS['primary'])
+        subtitle.pack(side='left', padx=15)
+        
+        # Right side - quick info
+        right = tk.Frame(header, bg=COLORS['primary'])
+        right.pack(side='right', padx=15, pady=8)
+        
+        self.company_header_label = tk.Label(right, 
+            text=f"📋 {self.settings.get('company_name', '')}",
+            font=('Segoe UI', 10),
+            fg=COLORS['bg_white'], bg=COLORS['primary'])
+        self.company_header_label.pack(side='right')
 
     # menu
     def create_menu(self):
@@ -434,101 +600,196 @@ class RoofCalculatorApp:
 
     # notebook
     def create_notebook(self):
-        self.notebook = ttk.Notebook(self.master); self.notebook.pack(expand=True, fill="both", padx=10, pady=10)
+        # Main container with notebook
+        self.notebook = ttk.Notebook(self.master)
+        self.notebook.pack(expand=True, fill="both", padx=10, pady=(5, 10))
 
-    # cost tab UI (kept similar to previous working version)
+    # cost tab UI with improved styling
     def create_cost_tab(self):
-        # Implementation mirrors main_app043/main_app044 UI layout
-        self.cost_tab = ttk.Frame(self.notebook); self.notebook.add(self.cost_tab, text="Kosztorys/Oferta")
-        left = ttk.Frame(self.cost_tab); left.pack(side="left", fill="both", expand=True, padx=8, pady=8)
-        right_container = ttk.Frame(self.cost_tab, width=420); right_container.pack(side="right", fill="y", padx=8, pady=8)
+        self.cost_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.cost_tab, text="📋 Kosztorys/Oferta")
+        
+        left = ttk.Frame(self.cost_tab)
+        left.pack(side="left", fill="both", expand=True, padx=8, pady=8)
+        right_container = ttk.Frame(self.cost_tab, width=440)
+        right_container.pack(side="right", fill="y", padx=8, pady=8)
 
-        # header/meta
-        header_frame = ttk.Frame(left); header_frame.pack(fill="x", pady=(0,6))
-        self.client_summary_label = ttk.Label(header_frame, text="Klient: (brak)", anchor="w", font=("Arial",10)); self.client_summary_label.pack(side="left", anchor="w")
-        inv_frame = ttk.Frame(header_frame); inv_frame.pack(side="right", anchor="e")
-        ttk.Label(inv_frame, text="Nr kosztorysu:").grid(row=0,column=0,sticky="e"); ttk.Entry(inv_frame,width=18,textvariable=self.invoice_number).grid(row=0,column=1,padx=4)
-        ttk.Button(inv_frame, text="Nowy", command=self.new_cost_estimate).grid(row=0,column=2,padx=4)
-        ttk.Label(inv_frame, text="Metraż dachu [m²]:").grid(row=0,column=3,sticky="e"); ttk.Entry(inv_frame,width=8,textvariable=self.roof_area).grid(row=0,column=4,padx=4)
-        ttk.Label(inv_frame, text="Nazwa kosztorysu:").grid(row=1,column=0,sticky="e"); ttk.Entry(inv_frame,width=30,textvariable=self.quote_name).grid(row=1,column=1,columnspan=4,padx=4)
-        ttk.Label(inv_frame, text="Data:").grid(row=0,column=5,sticky="e"); ttk.Entry(inv_frame,width=12,textvariable=self.invoice_date).grid(row=0,column=6,padx=4)
+        # header/meta with improved layout
+        header_frame = ttk.LabelFrame(left, text="📄 Informacje o kosztorysie")
+        header_frame.pack(fill="x", pady=(0,8))
+        
+        # Client info row
+        client_row = ttk.Frame(header_frame)
+        client_row.pack(fill="x", padx=8, pady=4)
+        self.client_summary_label = ttk.Label(client_row, text="👤 Klient: (brak)", anchor="w", font=("Segoe UI", 10, "bold"))
+        self.client_summary_label.pack(side="left", anchor="w")
+        
+        # Invoice details row
+        inv_frame = ttk.Frame(header_frame)
+        inv_frame.pack(fill="x", padx=8, pady=4)
+        
+        ttk.Label(inv_frame, text="Nr kosztorysu:").grid(row=0,column=0,sticky="e", padx=2)
+        ttk.Entry(inv_frame,width=18,textvariable=self.invoice_number).grid(row=0,column=1,padx=4)
+        ttk.Button(inv_frame, text="🆕 Nowy", command=self.new_cost_estimate, style='Accent.TButton').grid(row=0,column=2,padx=4)
+        
+        ttk.Label(inv_frame, text="Metraż dachu [m²]:").grid(row=0,column=3,sticky="e", padx=2)
+        ttk.Entry(inv_frame,width=10,textvariable=self.roof_area).grid(row=0,column=4,padx=4)
+        
+        ttk.Label(inv_frame, text="Data:").grid(row=0,column=5,sticky="e", padx=2)
+        ttk.Entry(inv_frame,width=12,textvariable=self.invoice_date).grid(row=0,column=6,padx=4)
+        
+        ttk.Label(inv_frame, text="Nazwa kosztorysu:").grid(row=1,column=0,sticky="e", padx=2, pady=4)
+        ttk.Entry(inv_frame,width=50,textvariable=self.quote_name).grid(row=1,column=1,columnspan=4,padx=4, pady=4, sticky="w")
+        
+        ttk.Label(inv_frame, text="Ważność (dni):").grid(row=1,column=5,sticky="e", padx=2)
+        ttk.Entry(inv_frame,width=6,textvariable=self.validity_days).grid(row=1,column=6,padx=4)
 
-        # toolbar
-        toolbar = ttk.Frame(left); toolbar.pack(fill="x", pady=(0,6))
-        ttk.Button(toolbar, text="Oblicz kosztorys", command=self.calculate_cost_estimation).pack(side="left", padx=4)
-        ttk.Button(toolbar, text="Eksportuj CSV", command=self.export_cost_csv).pack(side="left", padx=4)
-        ttk.Button(toolbar, text="Eksportuj PDF", command=self.export_cost_pdf).pack(side="left", padx=4)
-        ttk.Button(toolbar, text="Wstaw z bazy", command=self.manage_materials_db).pack(side="right", padx=4)
-        ttk.Button(toolbar, text="Klienci", command=self.manage_clients).pack(side="right", padx=4)
+        # toolbar with styled buttons
+        toolbar = ttk.LabelFrame(left, text="⚡ Akcje")
+        toolbar.pack(fill="x", pady=(0,8))
+        
+        toolbar_inner = ttk.Frame(toolbar)
+        toolbar_inner.pack(fill="x", padx=8, pady=6)
+        
+        ttk.Button(toolbar_inner, text="📊 Oblicz kosztorys", command=self.calculate_cost_estimation, style='Accent.TButton').pack(side="left", padx=4)
+        ttk.Button(toolbar_inner, text="📄 Eksportuj CSV", command=self.export_cost_csv).pack(side="left", padx=4)
+        ttk.Button(toolbar_inner, text="📑 Eksportuj PDF", command=self.export_cost_pdf, style='Success.TButton').pack(side="left", padx=4)
+        ttk.Button(toolbar_inner, text="📦 Wstaw z bazy", command=self.manage_materials_db).pack(side="right", padx=4)
+        ttk.Button(toolbar_inner, text="👥 Klienci", command=self.manage_clients).pack(side="right", padx=4)
 
-        # quick sums
-        sums_frame = ttk.Frame(left); sums_frame.pack(fill="x", pady=(0,6))
-        self.lbl_mat_total = ttk.Label(sums_frame, text="Materiały netto: 0,00 zł"); self.lbl_mat_total.pack(side="left", padx=6)
-        self.lbl_srv_total = ttk.Label(sums_frame, text="Usługi netto: 0,00 zł"); self.lbl_srv_total.pack(side="left", padx=6)
-        self.lbl_total_all = ttk.Label(sums_frame, text="Suma brutto: 0,00 zł", font=("Arial",10,"bold")); self.lbl_total_all.pack(side="right", padx=6)
+        # quick sums with styled labels
+        sums_frame = ttk.LabelFrame(left, text="💰 Podsumowanie")
+        sums_frame.pack(fill="x", pady=(0,8))
+        
+        sums_inner = ttk.Frame(sums_frame)
+        sums_inner.pack(fill="x", padx=8, pady=6)
+        
+        self.lbl_mat_total = ttk.Label(sums_inner, text="🧱 Materiały netto: 0,00 zł", font=("Segoe UI", 10))
+        self.lbl_mat_total.pack(side="left", padx=12)
+        self.lbl_srv_total = ttk.Label(sums_inner, text="🔧 Usługi netto: 0,00 zł", font=("Segoe UI", 10))
+        self.lbl_srv_total.pack(side="left", padx=12)
+        self.lbl_total_all = ttk.Label(sums_inner, text="💵 Suma brutto: 0,00 zł", font=("Segoe UI", 11, "bold"))
+        self.lbl_total_all.pack(side="right", padx=12)
 
         # split area: materials and services
         split_pane = ttk.Panedwindow(left, orient="vertical")
         split_pane.pack(fill="both", expand=True)
-        mat_frame = ttk.Labelframe(split_pane, text="Materiały")
-        srv_frame = ttk.Labelframe(split_pane, text="Usługi")
-        split_pane.add(mat_frame, weight=1); split_pane.add(srv_frame, weight=1)
+        mat_frame = ttk.Labelframe(split_pane, text="🧱 Materiały")
+        srv_frame = ttk.Labelframe(split_pane, text="🔧 Usługi")
+        split_pane.add(mat_frame, weight=1)
+        split_pane.add(srv_frame, weight=1)
 
         # materials tree with scrollbar
-        mat_tree_container = ttk.Frame(mat_frame); mat_tree_container.pack(fill="both", expand=True, padx=6, pady=6)
-        mat_tree_container.config(height=260)
+        mat_tree_container = ttk.Frame(mat_frame)
+        mat_tree_container.pack(fill="both", expand=True, padx=6, pady=6)
         mat_cols = ("name","qty","unit","price_net","net")
         self.mat_tree = ttk.Treeview(mat_tree_container, columns=mat_cols, show="headings", selectmode="browse")
         for c,h in zip(mat_cols,("Nazwa","Ilość","JM","Cena netto","Wartość netto")):
-            self.mat_tree.heading(c, text=h); self.mat_tree.column(c, width=300 if c=="name" else 80, anchor="w" if c=="name" else "e")
+            self.mat_tree.heading(c, text=h)
+            self.mat_tree.column(c, width=320 if c=="name" else 90, anchor="w" if c=="name" else "e")
         mat_vscroll = ttk.Scrollbar(mat_tree_container, orient="vertical", command=self.mat_tree.yview)
         self.mat_tree.configure(yscrollcommand=mat_vscroll.set)
         self.mat_tree.pack(side="left", fill="both", expand=True)
         mat_vscroll.pack(side="right", fill="y")
-        mat_btnf = ttk.Frame(mat_frame); mat_btnf.pack(fill="x", padx=6, pady=4)
-        ttk.Button(mat_btnf, text="Edytuj zaznaczoną", command=lambda: self._edit_from_tree("material")).pack(side="left", padx=4)
-        ttk.Button(mat_btnf, text="Usuń zaznaczoną", command=lambda: self._delete_from_tree("material")).pack(side="left", padx=4)
+        
+        mat_btnf = ttk.Frame(mat_frame)
+        mat_btnf.pack(fill="x", padx=6, pady=4)
+        ttk.Button(mat_btnf, text="✏️ Edytuj", command=lambda: self._edit_from_tree("material")).pack(side="left", padx=4)
+        ttk.Button(mat_btnf, text="🗑️ Usuń", command=lambda: self._delete_from_tree("material")).pack(side="left", padx=4)
 
         # services tree with scrollbar
-        srv_tree_container = ttk.Frame(srv_frame); srv_tree_container.pack(fill="both", expand=True, padx=6, pady=6)
-        srv_tree_container.config(height=260)
+        srv_tree_container = ttk.Frame(srv_frame)
+        srv_tree_container.pack(fill="both", expand=True, padx=6, pady=6)
         srv_cols = ("name","qty","unit","price_net","net")
         self.srv_tree = ttk.Treeview(srv_tree_container, columns=srv_cols, show="headings", selectmode="browse")
         for c,h in zip(srv_cols,("Nazwa","Ilość","JM","Cena netto","Wartość netto")):
-            self.srv_tree.heading(c, text=h); self.srv_tree.column(c, width=300 if c=="name" else 80, anchor="w" if c=="name" else "e")
+            self.srv_tree.heading(c, text=h)
+            self.srv_tree.column(c, width=320 if c=="name" else 90, anchor="w" if c=="name" else "e")
         srv_vscroll = ttk.Scrollbar(srv_tree_container, orient="vertical", command=self.srv_tree.yview)
         self.srv_tree.configure(yscrollcommand=srv_vscroll.set)
         self.srv_tree.pack(side="left", fill="both", expand=True)
         srv_vscroll.pack(side="right", fill="y")
-        srv_btnf = ttk.Frame(srv_frame); srv_btnf.pack(fill="x", padx=6, pady=4)
-        ttk.Button(srv_btnf, text="Edytuj zaznaczoną", command=lambda: self._edit_from_tree("service")).pack(side="left", padx=4)
-        ttk.Button(srv_btnf, text="Usuń zaznaczoną", command=lambda: self._delete_from_tree("service")).pack(side="left", padx=4)
+        
+        srv_btnf = ttk.Frame(srv_frame)
+        srv_btnf.pack(fill="x", padx=6, pady=4)
+        ttk.Button(srv_btnf, text="✏️ Edytuj", command=lambda: self._edit_from_tree("service")).pack(side="left", padx=4)
+        ttk.Button(srv_btnf, text="🗑️ Usuń", command=lambda: self._delete_from_tree("service")).pack(side="left", padx=4)
 
         # right panel (add item / client / transport / summary)
-        right = ttk.Frame(right_container); right.pack(fill="both", expand=True, padx=4, pady=4)
-        form = ttk.LabelFrame(right, text="Dodaj pozycję"); form.pack(fill="x", pady=6, padx=6)
-        ttk.Label(form, text="Nazwa:").grid(row=0,column=0,sticky="w"); self.c_name = ttk.Entry(form, width=36); self.c_name.grid(row=0,column=1)
-        ttk.Label(form, text="Ilość:").grid(row=1,column=0,sticky="w"); self.c_qty = ttk.Entry(form, width=12); self.c_qty.grid(row=1,column=1,sticky="w")
-        ttk.Label(form, text="JM:").grid(row=2,column=0,sticky="w"); self.c_unit = ttk.Entry(form, width=12); self.c_unit.grid(row=2,column=1,sticky="w")
-        ttk.Label(form, text="Cena netto:").grid(row=3,column=0,sticky="w"); self.c_price = ttk.Entry(form, width=12); self.c_price.grid(row=3,column=1,sticky="w")
-        ttk.Label(form, text="VAT:").grid(row=4,column=0,sticky="w"); self.c_vat = ttk.Combobox(form, values=["0","8","23"], width=8, state="readonly"); self.c_vat.grid(row=4,column=1,sticky="w"); self.c_vat.set("23")
-        ttk.Label(form, text="Kategoria:").grid(row=5,column=0,sticky="w"); self.c_cat = ttk.Combobox(form, values=["material","service"], width=12, state="readonly"); self.c_cat.grid(row=5,column=1,sticky="w"); self.c_cat.set("material")
+        right = ttk.Frame(right_container)
+        right.pack(fill="both", expand=True, padx=4, pady=4)
+        
+        # Add item form with icons
+        form = ttk.LabelFrame(right, text="➕ Dodaj pozycję")
+        form.pack(fill="x", pady=6, padx=6)
+        
+        ttk.Label(form, text="Nazwa:").grid(row=0,column=0,sticky="w", padx=4, pady=2)
+        self.c_name = ttk.Entry(form, width=36)
+        self.c_name.grid(row=0,column=1, pady=2)
+        
+        ttk.Label(form, text="Ilość:").grid(row=1,column=0,sticky="w", padx=4, pady=2)
+        self.c_qty = ttk.Entry(form, width=12)
+        self.c_qty.grid(row=1,column=1,sticky="w", pady=2)
+        
+        ttk.Label(form, text="JM:").grid(row=2,column=0,sticky="w", padx=4, pady=2)
+        self.c_unit = ttk.Entry(form, width=12)
+        self.c_unit.grid(row=2,column=1,sticky="w", pady=2)
+        
+        ttk.Label(form, text="Cena netto:").grid(row=3,column=0,sticky="w", padx=4, pady=2)
+        self.c_price = ttk.Entry(form, width=12)
+        self.c_price.grid(row=3,column=1,sticky="w", pady=2)
+        
+        ttk.Label(form, text="VAT:").grid(row=4,column=0,sticky="w", padx=4, pady=2)
+        self.c_vat = ttk.Combobox(form, values=["0","8","23"], width=8, state="readonly")
+        self.c_vat.grid(row=4,column=1,sticky="w", pady=2)
+        self.c_vat.set("23")
+        
+        ttk.Label(form, text="Kategoria:").grid(row=5,column=0,sticky="w", padx=4, pady=2)
+        self.c_cat = ttk.Combobox(form, values=["material","service"], width=12, state="readonly")
+        self.c_cat.grid(row=5,column=1,sticky="w", pady=2)
+        self.c_cat.set("material")
+        
         vcmd_f = (self.master.register(lambda P: is_valid_float_text(P)), "%P")
-        self.c_qty.config(validate="key", validatecommand=vcmd_f); self.c_price.config(validate="key", validatecommand=vcmd_f)
-        ttk.Button(right, text="Dodaj do kosztorysu", command=self.add_cost_item_from_form).pack(fill="x", pady=6, padx=6)
-        ttk.Button(right, text="Wstaw z bazy (okno)", command=self.manage_materials_db).pack(fill="x", pady=2, padx=6)
-        ttk.Separator(right, orient="horizontal").pack(fill="x", pady=6)
-        ttk.Button(right, text="Zarządzaj klientami", command=self.manage_clients).pack(fill="x", pady=2, padx=6)
-        ttk.Label(right, text="Wybierz klienta:").pack(anchor="w", padx=6, pady=(6,0))
-        self.client_cb = ttk.Combobox(right, values=[c.get("name","") for c in self.clients], state="readonly", width=36)
-        self.client_cb.pack(anchor="w", padx=6); self.client_cb.bind("<<ComboboxSelected>>", lambda e: self._on_client_selected())
-        transport_frame = ttk.LabelFrame(right, text="Transport"); transport_frame.pack(fill="x", pady=6, padx=6)
-        ttk.Label(transport_frame, text="Procent [%]:").grid(row=0,column=0,sticky="w"); self.e_transport = ttk.Entry(transport_frame, width=8, textvariable=self.transport_percent); self.e_transport.grid(row=0,column=1,padx=4)
-        ttk.Label(transport_frame, text="VAT:").grid(row=1,column=0,sticky="w"); self.transport_vat_cb = ttk.Combobox(transport_frame, values=["0","8","23"], width=8, state="readonly", textvariable=self.transport_vat); self.transport_vat_cb.grid(row=1,column=1)
-        summary_frame = ttk.Labelframe(right, text="Podsumowanie / Komentarz"); summary_frame.pack(fill="both", expand=True, padx=6, pady=6)
-        self.summary_text = tk.Text(summary_frame, height=10, state="disabled"); self.summary_text.pack(fill="both", expand=True)
+        self.c_qty.config(validate="key", validatecommand=vcmd_f)
+        self.c_price.config(validate="key", validatecommand=vcmd_f)
+        
+        ttk.Button(right, text="➕ Dodaj do kosztorysu", command=self.add_cost_item_from_form, style='Accent.TButton').pack(fill="x", pady=6, padx=6)
+        ttk.Button(right, text="📦 Wstaw z bazy (okno)", command=self.manage_materials_db).pack(fill="x", pady=2, padx=6)
+        
+        ttk.Separator(right, orient="horizontal").pack(fill="x", pady=8)
+        
+        # Client section
+        client_section = ttk.LabelFrame(right, text="👥 Klient")
+        client_section.pack(fill="x", pady=4, padx=6)
+        
+        ttk.Button(client_section, text="Zarządzaj klientami", command=self.manage_clients).pack(fill="x", pady=4, padx=8)
+        ttk.Label(client_section, text="Wybierz klienta:").pack(anchor="w", padx=8, pady=(4,0))
+        self.client_cb = ttk.Combobox(client_section, values=[c.get("name","") for c in self.clients], state="readonly", width=36)
+        self.client_cb.pack(anchor="w", padx=8, pady=(0,8))
+        self.client_cb.bind("<<ComboboxSelected>>", lambda e: self._on_client_selected())
+        
+        # Transport section
+        transport_frame = ttk.LabelFrame(right, text="🚚 Transport")
+        transport_frame.pack(fill="x", pady=4, padx=6)
+        
+        ttk.Label(transport_frame, text="Procent [%]:").grid(row=0,column=0,sticky="w", padx=8, pady=4)
+        self.e_transport = ttk.Entry(transport_frame, width=8, textvariable=self.transport_percent)
+        self.e_transport.grid(row=0,column=1,padx=4, pady=4)
+        
+        ttk.Label(transport_frame, text="VAT:").grid(row=0,column=2,sticky="w", padx=8, pady=4)
+        self.transport_vat_cb = ttk.Combobox(transport_frame, values=["0","8","23"], width=8, state="readonly", textvariable=self.transport_vat)
+        self.transport_vat_cb.grid(row=0,column=3, padx=4, pady=4)
+        
+        # Summary/Comment section
+        summary_frame = ttk.Labelframe(right, text="📝 Podsumowanie / Komentarz")
+        summary_frame.pack(fill="both", expand=True, padx=6, pady=6)
+        
+        self.summary_text = tk.Text(summary_frame, height=8, state="disabled", bg=COLORS['bg_white'], font=("Segoe UI", 9))
+        self.summary_text.pack(fill="both", expand=True, padx=4, pady=4)
+        
         ttk.Label(summary_frame, text="Komentarz (umieszczony w PDF):").pack(anchor="w", padx=4, pady=(6,0))
-        self.comment_text = tk.Text(summary_frame, height=6); self.comment_text.pack(fill="both", expand=False, padx=4, pady=(0,6))
+        self.comment_text = tk.Text(summary_frame, height=5, bg=COLORS['bg_white'], font=("Segoe UI", 9))
+        self.comment_text.pack(fill="both", expand=False, padx=4, pady=(0,6))
 
         # double-click edit bindings
         self.mat_tree.bind("<Double-1>", lambda e: self._edit_from_tree("material"))
@@ -556,9 +817,9 @@ class RoofCalculatorApp:
             mats_vat = sum(round((float(it.get("quantity",0.0))*float(it.get("price_unit_net",0.0))) * (int(it.get("vat_rate",0))/100.0),2) for it in mats)
             srvs_vat = sum(round((float(it.get("quantity",0.0))*float(it.get("price_unit_net",0.0))) * (int(it.get("vat_rate",0))/100.0),2) for it in srvs)
             total_gross = mats_tot + mats_vat + srvs_tot + srvs_vat
-            self.lbl_mat_total.config(text=f"Materiały netto: {fmt_money_plain(mats_tot)} zł")
-            self.lbl_srv_total.config(text=f"Usługi netto: {fmt_money_plain(srvs_tot)} zł")
-            self.lbl_total_all.config(text=f"Suma brutto: {fmt_money_plain(total_gross)} zł")
+            self.lbl_mat_total.config(text=f"🧱 Materiały netto: {fmt_money_plain(mats_tot)} zł")
+            self.lbl_srv_total.config(text=f"🔧 Usługi netto: {fmt_money_plain(srvs_tot)} zł")
+            self.lbl_total_all.config(text=f"💵 Suma brutto: {fmt_money_plain(total_gross)} zł")
         except Exception as e:
             print("Refresh UI error:", e)
 
@@ -854,19 +1115,23 @@ class RoofCalculatorApp:
         services = [it for it in items_aug if it.get("category","material")=="service"]
         path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF","*.pdf"),("All","*.*")])
         if not path: return
-        doc = SimpleDocTemplate(path, pagesize=portrait(A4), leftMargin=12, rightMargin=12, topMargin=12, bottomMargin=12)
+        doc = SimpleDocTemplate(path, pagesize=portrait(A4), leftMargin=15*mm, rightMargin=15*mm, topMargin=15*mm, bottomMargin=15*mm)
         styles = getSampleStyleSheet(); base_font = self._registered_pdf_font_name or styles['Normal'].fontName
-        normal = ParagraphStyle("NormalApp", parent=styles['Normal'], fontName=base_font, fontSize=9, leading=11)
-        heading = ParagraphStyle("HeadingApp", parent=styles['Heading3'], fontName=base_font, fontSize=10, leading=12)
-        title = ParagraphStyle("TitleApp", parent=styles['Title'], fontName=base_font, fontSize=12, leading=14, alignment=1)
+        normal = ParagraphStyle("NormalApp", parent=styles['Normal'], fontName=base_font, fontSize=9, leading=12)
+        normal_bold = ParagraphStyle("NormalBoldApp", parent=normal, fontName=base_font, fontSize=9, leading=12, textColor=colors.HexColor("#2C3E50"))
+        heading = ParagraphStyle("HeadingApp", parent=styles['Heading3'], fontName=base_font, fontSize=11, leading=14, textColor=colors.HexColor("#E67E22"))
+        title = ParagraphStyle("TitleApp", parent=styles['Title'], fontName=base_font, fontSize=16, leading=18, alignment=1, textColor=colors.HexColor("#2C3E50"))
+        subtitle = ParagraphStyle("SubtitleApp", parent=styles['Normal'], fontName=base_font, fontSize=10, leading=12, alignment=1, textColor=colors.HexColor("#7F8C8D"))
         elems = []
-        # header meta and remaining PDF construction similar to main_app043 - kept for brevity but present in full
+        
+        # Header with logo and document info
         meta_lines = []
-        meta_lines.append(f"Nr kosztorysu: {self.invoice_number.get()}")
-        meta_lines.append(f"Data: {self.invoice_date.get()}")
-        meta_lines.append(f"Metraż dachu: {self.roof_area.get()} m²")
+        meta_lines.append(f"<b>Nr kosztorysu:</b> {self.invoice_number.get()}")
+        meta_lines.append(f"<b>Data wystawienia:</b> {self.invoice_date.get()}")
+        meta_lines.append(f"<b>Metraż dachu:</b> {self.roof_area.get()} m²")
+        meta_lines.append(f"<b>Ważność oferty:</b> {self.validity_days.get()} dni")
         if self.quote_name.get():
-            meta_lines.append(f"Nazwa: {self.quote_name.get()}")
+            meta_lines.append(f"<b>Nazwa:</b> {self.quote_name.get()}")
         meta_para = Paragraph("<br/>".join(meta_lines), normal)
         right_parts = []
         if self.logo_path and os.path.exists(self.logo_path):
@@ -877,35 +1142,51 @@ class RoofCalculatorApp:
                 right_parts.append(img)
             except Exception:
                 pass
-        header_tbl = Table([[meta_para, right_parts]], colWidths=[330,200])
+        header_tbl = Table([[meta_para, right_parts]], colWidths=[320,210])
         header_tbl.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'TOP')]))
-        elems.append(header_tbl); elems.append(Spacer(1,8))
-        # client/company two-column
+        elems.append(header_tbl)
+        elems.append(Spacer(1,12))
+        
+        # Title
+        elems.append(Paragraph("KOSZTORYS OFERTOWY", title))
+        elems.append(Spacer(1,8))
+        
+        # client/company two-column with styled headers
         client = next((c for c in self.clients if hasattr(self,"client_cb") and c.get("name","")==self.client_cb.get()), None)
-        client_lines=[]
+        client_lines=["<b>KLIENT:</b>"]
         if client:
-            client_lines.append(client.get("name",""))
+            client_lines.append(f"<b>{client.get('name','')}</b>")
             if client.get("address",""): client_lines.append(client.get("address",""))
             if client.get("id",""): client_lines.append("NIP: "+client.get("id",""))
             if client.get("phone",""): client_lines.append("Tel: "+client.get("phone",""))
             if client.get("email",""): client_lines.append("E-mail: "+client.get("email",""))
         else:
-            client_lines.append("(Brak klienta)")
-        company_lines=[]
-        company_lines.append(self.settings.get("company_name",""))
+            client_lines.append("(Brak danych klienta)")
+            
+        company_lines=["<b>WYKONAWCA:</b>"]
+        company_lines.append(f"<b>{self.settings.get('company_name','')}</b>")
         if self.settings.get("company_address",""): company_lines.append(self.settings.get("company_address",""))
         if self.settings.get("company_nip",""): company_lines.append("NIP: "+self.settings.get("company_nip",""))
         if self.settings.get("company_phone",""): company_lines.append("Tel: "+self.settings.get("company_phone",""))
         if self.settings.get("company_email",""): company_lines.append("E-mail: "+self.settings.get("company_email",""))
         if self.settings.get("company_account",""): company_lines.append("Nr konta: "+self.settings.get("company_account",""))
+        
         left_part = Paragraph("<br/>".join(client_lines), normal)
         right_part = Paragraph("<br/>".join(company_lines), normal)
-        cc_tbl = Table([[left_part,right_part]], colWidths=[330,200]); cc_tbl.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'TOP')]))
-        elems.append(cc_tbl); elems.append(Spacer(1,10))
-        elems.append(Paragraph("KOSZTORYS OFERTOWY", title)); elems.append(Spacer(1,10))
-        # helper: add tables with sums (narrower columns)
+        cc_tbl = Table([[left_part,right_part]], colWidths=[270,270])
+        cc_tbl.setStyle(TableStyle([
+            ('VALIGN',(0,0),(-1,-1),'TOP'),
+            ('BOX',(0,0),(0,0),0.5,colors.HexColor("#BDC3C7")),
+            ('BOX',(1,0),(1,0),0.5,colors.HexColor("#BDC3C7")),
+            ('PADDING',(0,0),(-1,-1),8),
+        ]))
+        elems.append(cc_tbl)
+        elems.append(Spacer(1,15))
+        
+        # helper: add tables with sums (narrower columns) - improved styling
         def add_table_with_sum(title_txt: str, rows: List[List[str]], sum_label: str, sum_value: float):
             elems.append(Paragraph(title_txt, heading))
+            elems.append(Spacer(1,4))
             max_rows_per_table = 28
             total_rows = len(rows)
             chunks = [rows[i:i+max_rows_per_table] for i in range(0, total_rows, max_rows_per_table)]
@@ -914,30 +1195,39 @@ class RoofCalculatorApp:
             for ci, chunk in enumerate(chunks):
                 tbl = [["Lp","Nazwa","Ilość","JM","Cena netto","Wartość netto"]] + chunk
                 if ci == len(chunks)-1:
-                    tbl.append(["", sum_label, "", "", "", f"{fmt_money_plain(sum_value)}"])
-                    t = Table(tbl, repeatRows=1, colWidths=[28,300,48,36,70,80])
+                    tbl.append(["", sum_label, "", "", "", f"{fmt_money_plain(sum_value)} zł"])
+                    t = Table(tbl, repeatRows=1, colWidths=[25,280,50,35,75,75])
                     t.setStyle(TableStyle([
-                        ('BACKGROUND',(0,0),(-1,0),colors.lightgrey),
-                        ('GRID',(0,0),(-1,-1),0.25,colors.grey),
+                        ('BACKGROUND',(0,0),(-1,0),colors.HexColor("#FCD5B4")),
+                        ('TEXTCOLOR',(0,0),(-1,0),colors.HexColor("#2C3E50")),
+                        ('GRID',(0,0),(-1,-1),0.5,colors.HexColor("#BDC3C7")),
+                        ('ALIGN',(0,0),(0,-1),'CENTER'),
                         ('ALIGN',(2,1),(2,-2),'RIGHT'),
                         ('ALIGN',(4,1),(5,-2),'RIGHT'),
                         ('ALIGN',(5,-1),(5,-1),'RIGHT'),
                         ('SPAN',(1,-1),(4,-1)),
-                        ('BACKGROUND',(0,-1),(-1,-1),colors.HexColor("#FFF2B2")),
+                        ('BACKGROUND',(0,-1),(-1,-1),colors.HexColor("#E8F6F3")),
                         ('FONTNAME',(0,0),(-1,-1), self._registered_pdf_font_name or styles['Normal'].fontName),
                         ('FONTSIZE',(0,0),(-1,-1),9),
+                        ('FONTNAME',(0,-1),(-1,-1), self._registered_pdf_font_name or styles['Normal'].fontName),
+                        ('BOTTOMPADDING',(0,0),(-1,-1),6),
+                        ('TOPPADDING',(0,0),(-1,-1),6),
                     ]))
                 else:
-                    t = Table(tbl, repeatRows=1, colWidths=[28,330,48,36,70,80])
+                    t = Table(tbl, repeatRows=1, colWidths=[25,280,50,35,75,75])
                     t.setStyle(TableStyle([
-                        ('BACKGROUND',(0,0),(-1,0),colors.lightgrey),
-                        ('GRID',(0,0),(-1,-1),0.25,colors.grey),
+                        ('BACKGROUND',(0,0),(-1,0),colors.HexColor("#FCD5B4")),
+                        ('TEXTCOLOR',(0,0),(-1,0),colors.HexColor("#2C3E50")),
+                        ('GRID',(0,0),(-1,-1),0.5,colors.HexColor("#BDC3C7")),
+                        ('ALIGN',(0,0),(0,-1),'CENTER'),
                         ('ALIGN',(2,1),(2,-1),'RIGHT'),
                         ('ALIGN',(4,1),(5,-1),'RIGHT'),
                         ('FONTNAME',(0,0),(-1,-1), self._registered_pdf_font_name or styles['Normal'].fontName),
                         ('FONTSIZE',(0,0),(-1,-1),9),
+                        ('BOTTOMPADDING',(0,0),(-1,-1),6),
+                        ('TOPPADDING',(0,0),(-1,-1),6),
                     ]))
-                elems.append(t); elems.append(Spacer(1,8))
+                elems.append(t); elems.append(Spacer(1,10))
                 if ci < len(chunks)-1:
                     elems.append(PageBreak())
         mat_rows = [[str(i+1), it.get("name",""), f"{it.get('quantity',0):.3f}", it.get("unit",""), f"{it.get('price_unit_net',0.0):.2f}", f"{it.get('total_net',0.0):.2f}"] for i,it in enumerate(materials)]
@@ -945,25 +1235,58 @@ class RoofCalculatorApp:
         add_table_with_sum("MATERIAŁY", mat_rows, "SUMA MATERIAŁY:", mat_sum)
         srv_rows = [[str(i+1), it.get("name",""), f"{it.get('quantity',0):.3f}", it.get("unit",""), f"{it.get('price_unit_net',0.0):.2f}", f"{it.get('total_net',0.0):.2f}"] for i,it in enumerate(services)]
         srv_sum = sum(it.get("total_net",0.0) for it in services)
-        add_table_with_sum("USŁUGI", srv_rows, "SUMA USŁUGI:", srv_sum)
-        # overall summary
+        add_table_with_sum("ROBOCIZNA / USŁUGI", srv_rows, "SUMA USŁUGI:", srv_sum)
+        
+        # overall summary with improved styling
         elems.append(Paragraph("PODSUMOWANIE", heading))
+        elems.append(Spacer(1,4))
         summary_rows = [["Opis","Netto","VAT","Brutto"]]
         for vat,s in sorted(totals["by_vat"].items()):
             summary_rows.append([f"VAT {vat} %", fmt_money_plain(s.get("net",0.0))+" zł", fmt_money_plain(s.get("vat",0.0))+" zł", fmt_money_plain(s.get("gross",0.0))+" zł"])
         tinfo = totals["transport"]
-        summary_rows.append(["Transport", fmt_money_plain(tinfo.get("net",0.0))+" zł", fmt_money_plain(tinfo.get("vat",0.0))+" zł", fmt_money_plain(tinfo.get("gross",0.0))+" zł"])
+        summary_rows.append([f"Transport ({tinfo.get('percent',0)}%)", fmt_money_plain(tinfo.get("net",0.0))+" zł", fmt_money_plain(tinfo.get("vat",0.0))+" zł", fmt_money_plain(tinfo.get("gross",0.0))+" zł"])
         ssum = totals["summary"]
-        summary_rows.append(["RAZEM", fmt_money_plain(ssum.get("net",0.0))+" zł", fmt_money_plain(ssum.get("vat",0.0))+" zł", fmt_money_plain(ssum.get("gross",0.0))+" zł"])
-        sum_tbl = Table(summary_rows, colWidths=[240,120,120,120])
-        sum_tbl.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.lightgrey),('GRID',(0,0),(-1,-1),0.25,colors.grey),('ALIGN',(1,0),(-1,-1),'RIGHT'),('FONTNAME',(0,0),(-1,-1), self._registered_pdf_font_name or styles['Normal'].fontName),('FONTSIZE',(0,0),(-1,-1),9)]))
-        elems.append(sum_tbl); elems.append(Spacer(1,10))
-        # comment
+        summary_rows.append(["RAZEM DO ZAPŁATY", fmt_money_plain(ssum.get("net",0.0))+" zł", fmt_money_plain(ssum.get("vat",0.0))+" zł", fmt_money_plain(ssum.get("gross",0.0))+" zł"])
+        sum_tbl = Table(summary_rows, colWidths=[180,120,100,120])
+        sum_tbl.setStyle(TableStyle([
+            ('BACKGROUND',(0,0),(-1,0),colors.HexColor("#FCD5B4")),
+            ('TEXTCOLOR',(0,0),(-1,0),colors.HexColor("#2C3E50")),
+            ('GRID',(0,0),(-1,-1),0.5,colors.HexColor("#BDC3C7")),
+            ('ALIGN',(1,0),(-1,-1),'RIGHT'),
+            ('FONTNAME',(0,0),(-1,-1), self._registered_pdf_font_name or styles['Normal'].fontName),
+            ('FONTSIZE',(0,0),(-1,-1),9),
+            ('BACKGROUND',(0,-1),(-1,-1),colors.HexColor("#27AE60")),
+            ('TEXTCOLOR',(0,-1),(-1,-1),colors.white),
+            ('FONTNAME',(0,-1),(-1,-1), self._registered_pdf_font_name or styles['Normal'].fontName),
+            ('BOTTOMPADDING',(0,0),(-1,-1),8),
+            ('TOPPADDING',(0,0),(-1,-1),8),
+        ]))
+        elems.append(sum_tbl)
+        elems.append(Spacer(1,15))
+        
+        # comment section
         comment = self.comment_text.get("1.0","end").strip()
         if comment:
             elems.append(Paragraph("Komentarz:", heading))
+            elems.append(Spacer(1,4))
             elems.append(Paragraph(comment.replace("\n","<br/>"), normal))
-            elems.append(Spacer(1,8))
+            elems.append(Spacer(1,10))
+        
+        # Footnotes/disclaimers
+        footnote_style = ParagraphStyle("FootnoteApp", parent=normal, fontSize=8, leading=10, textColor=colors.HexColor("#7F8C8D"))
+        footnotes = [
+            "* Transport pionowy, Praca sprzętu, Materiały pomocnicze i Koszty zakupu = 3% od Wartości (min 100 zł)",
+            "** Cena bez utylizacji odpadów",
+            "*** Ceny materiałów mogą ulec zmianie w zależności od sytuacji rynkowej"
+        ]
+        for fn in footnotes:
+            elems.append(Paragraph(fn, footnote_style))
+        elems.append(Spacer(1,15))
+        
+        # Footer with company slogan
+        footer_style = ParagraphStyle("FooterApp", parent=normal, fontSize=12, leading=14, alignment=1, textColor=colors.HexColor("#E67E22"))
+        elems.append(Paragraph("<b>TYLKO DACHY TYLKO VICTOR</b>", footer_style))
+        
         try:
             doc.build(elems)
             messagebox.showinfo("PDF wygenerowany", f"Zapisano PDF: {path}")
@@ -1053,6 +1376,501 @@ class RoofCalculatorApp:
             pass
         self._refresh_cost_ui()
         messagebox.showinfo("Wczytano", f"Wczytano kosztorys: {path}")
+
+    # ==================== NEW TABS ====================
+    
+    def create_measurement_tab(self):
+        """Create roof measurement/calculation tab"""
+        self.measurement_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.measurement_tab, text="📐 Pomiar Dachu")
+        
+        # Left panel - roof configuration
+        left = ttk.Frame(self.measurement_tab)
+        left.pack(side="left", fill="both", expand=True, padx=10, pady=10)
+        
+        # Right panel - results
+        right = ttk.Frame(self.measurement_tab, width=400)
+        right.pack(side="right", fill="y", padx=10, pady=10)
+        
+        # Roof type selection
+        type_frame = ttk.LabelFrame(left, text="🏠 Typ dachu")
+        type_frame.pack(fill="x", pady=(0,10))
+        
+        types_inner = ttk.Frame(type_frame)
+        types_inner.pack(padx=10, pady=10)
+        
+        ttk.Radiobutton(types_inner, text="Jednospadowy", variable=self.roof_type, value="jednospadowy").grid(row=0, column=0, padx=10)
+        ttk.Radiobutton(types_inner, text="Dwuspadowy", variable=self.roof_type, value="dwuspadowy").grid(row=0, column=1, padx=10)
+        ttk.Radiobutton(types_inner, text="Kopertowy", variable=self.roof_type, value="kopertowy").grid(row=0, column=2, padx=10)
+        
+        # Dimensions input
+        dim_frame = ttk.LabelFrame(left, text="📏 Wymiary")
+        dim_frame.pack(fill="x", pady=(0,10))
+        
+        dim_inner = ttk.Frame(dim_frame)
+        dim_inner.pack(padx=10, pady=10)
+        
+        ttk.Label(dim_inner, text="Długość budynku [m]:").grid(row=0, column=0, sticky="w", pady=4)
+        ttk.Entry(dim_inner, textvariable=self.roof_length, width=12).grid(row=0, column=1, padx=8, pady=4)
+        
+        ttk.Label(dim_inner, text="Szerokość budynku [m]:").grid(row=1, column=0, sticky="w", pady=4)
+        ttk.Entry(dim_inner, textvariable=self.roof_width, width=12).grid(row=1, column=1, padx=8, pady=4)
+        
+        ttk.Label(dim_inner, text="Kąt nachylenia [°]:").grid(row=2, column=0, sticky="w", pady=4)
+        ttk.Entry(dim_inner, textvariable=self.roof_angle, width=12).grid(row=2, column=1, padx=8, pady=4)
+        
+        ttk.Checkbutton(dim_inner, text="Podaję wymiary rzeczywiste (nie rzut)", variable=self.is_real_dimensions).grid(row=3, column=0, columnspan=2, sticky="w", pady=8)
+        
+        # Calculate button
+        ttk.Button(left, text="📊 Oblicz wymiary dachu", command=self.calculate_roof, style='Accent.TButton').pack(pady=10)
+        
+        # Results display
+        results_frame = ttk.LabelFrame(right, text="📋 Wyniki obliczeń")
+        results_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        self.roof_results_text = tk.Text(results_frame, height=20, state="disabled", bg=COLORS['bg_white'], font=("Segoe UI", 10))
+        self.roof_results_text.pack(fill="both", expand=True, padx=8, pady=8)
+        
+        # Button to transfer area to cost estimate
+        ttk.Button(right, text="➡️ Przenieś metraż do kosztorysu", command=self.transfer_roof_area, style='Success.TButton').pack(pady=10, fill="x", padx=10)
+    
+    def calculate_roof(self):
+        """Calculate roof dimensions based on inputs"""
+        try:
+            roof_type = self.roof_type.get()
+            length = self.roof_length.get()
+            width = self.roof_width.get()
+            angle = self.roof_angle.get()
+            is_real = self.is_real_dimensions.get()
+            
+            if roof_type == "jednospadowy":
+                results = calculate_single_slope_roof(length, width, angle, is_real) if CALC_MODULES_AVAILABLE else self._calc_single_slope(length, width, angle, is_real)
+            elif roof_type == "dwuspadowy":
+                results = calculate_gable_roof(length, width, angle, is_real) if CALC_MODULES_AVAILABLE else self._calc_gable_roof(length, width, angle, is_real)
+            elif roof_type == "kopertowy":
+                results = calculate_hip_roof(length, width, angle, is_real) if CALC_MODULES_AVAILABLE else self._calc_hip_roof(length, width, angle)
+            else:
+                results = {"powierzchnia_dachu": 0.0}
+            
+            # Display results
+            output = []
+            output.append(f"🏠 Typ dachu: {roof_type}")
+            output.append(f"📏 Wymiary: {length} x {width} m")
+            output.append(f"📐 Kąt nachylenia: {angle}°")
+            output.append("")
+            output.append("=" * 40)
+            output.append("")
+            output.append(f"📊 POWIERZCHNIA DACHU: {results.get('powierzchnia_dachu', 0.0):.2f} m²")
+            output.append("")
+            output.append(f"🔺 Długość okapu: {results.get('dlugosc_okapu', 0.0):.2f} m")
+            output.append(f"🔺 Długość gąsiorów: {results.get('dlugosc_gasiorow', 0.0):.2f} m")
+            output.append(f"🔺 Długość wiatrownic: {results.get('dlugosc_wiatrownic', 0.0):.2f} m")
+            output.append(f"🔺 Długość koszy: {results.get('dlugosc_koszy', 0.0):.2f} m")
+            output.append(f"🔺 Długość krokwi skośnej: {results.get('slant_rafter_length', 0.0):.2f} m")
+            
+            self.roof_results_text.config(state="normal")
+            self.roof_results_text.delete("1.0", "end")
+            self.roof_results_text.insert("1.0", "\n".join(output))
+            self.roof_results_text.config(state="disabled")
+            
+            # Store for transfer
+            self._last_roof_calc = results
+            
+        except Exception as e:
+            messagebox.showerror("Błąd obliczeń", f"Wystąpił błąd: {e}")
+    
+    def _calc_single_slope(self, dl, szer, angle, is_real):
+        """Fallback calculation for single slope roof"""
+        if is_real:
+            return {"powierzchnia_dachu": dl * szer, "dlugosc_okapu": dl, "dlugosc_gasiorow": 0.0, "dlugosc_wiatrownic": 2*szer, "dlugosc_koszy": 0.0, "slant_rafter_length": szer}
+        # Protect against division by zero for angles near 90 degrees
+        if angle and angle < 89.5:  # Practical limit for roof angles
+            cos_val = math.cos(math.radians(angle))
+            slant_szer = szer / cos_val if cos_val > 0.01 else szer * 100  # Cap at practical maximum
+        else:
+            slant_szer = szer
+        return {"powierzchnia_dachu": dl * slant_szer, "dlugosc_okapu": dl, "dlugosc_gasiorow": 0.0, "dlugosc_wiatrownic": 2*slant_szer, "dlugosc_koszy": 0.0, "slant_rafter_length": slant_szer}
+    
+    def _calc_gable_roof(self, dl, szer, angle, is_real):
+        """Fallback calculation for gable roof"""
+        if is_real:
+            return {"powierzchnia_dachu": 2 * dl * szer, "dlugosc_okapu": 2*dl, "dlugosc_gasiorow": dl, "dlugosc_wiatrownic": 4*szer, "dlugosc_koszy": 0.0, "slant_rafter_length": szer}
+        half_szer = szer / 2
+        # Protect against division by zero for angles near 90 degrees
+        if angle and angle < 89.5:  # Practical limit for roof angles
+            cos_val = math.cos(math.radians(angle))
+            slant_krokiew = half_szer / cos_val if cos_val > 0.01 else half_szer * 100
+        else:
+            slant_krokiew = half_szer
+        return {"powierzchnia_dachu": 2 * dl * slant_krokiew, "dlugosc_okapu": 2*dl, "dlugosc_gasiorow": dl, "dlugosc_wiatrownic": 4*slant_krokiew, "dlugosc_koszy": 0.0, "slant_rafter_length": slant_krokiew}
+    
+    def _calc_hip_roof(self, dl, szer, angle):
+        """Fallback calculation for hip roof"""
+        # Protect against division by zero for angles near 90 degrees
+        if angle and angle < 89.5:  # Practical limit for roof angles
+            cos_val = math.cos(math.radians(angle))
+            slant = (szer/2) / cos_val if cos_val > 0.01 else (szer/2) * 100
+        else:
+            slant = szer/2
+        area_triangles = 2 * (0.5 * szer * slant)
+        kalenica = max(0, dl - szer)
+        area_trapezoids = 2 * (0.5 * (kalenica + dl) * slant)
+        return {"powierzchnia_dachu": area_triangles + area_trapezoids, "dlugosc_okapu": 2*(dl+szer), "dlugosc_gasiorow": 4*slant + kalenica, "dlugosc_wiatrownic": 0.0, "dlugosc_koszy": 0.0, "slant_rafter_length": slant}
+    
+    def transfer_roof_area(self):
+        """Transfer calculated roof area to the cost estimate tab"""
+        if hasattr(self, '_last_roof_calc') and self._last_roof_calc:
+            area = self._last_roof_calc.get('powierzchnia_dachu', 0.0)
+            self.roof_area.set(f"{area:.2f}")
+            messagebox.showinfo("Przeniesiono", f"Metraż dachu {area:.2f} m² przeniesiony do kosztorysu.")
+            self.notebook.select(self.cost_tab)
+        else:
+            messagebox.showwarning("Brak danych", "Najpierw oblicz wymiary dachu.")
+    
+    def create_gutter_tab(self):
+        """Create gutter calculation tab"""
+        self.gutter_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.gutter_tab, text="🌧️ Rynny")
+        
+        # Main container
+        main = ttk.Frame(self.gutter_tab)
+        main.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Input section
+        input_frame = ttk.LabelFrame(main, text="📏 Parametry orynnowania")
+        input_frame.pack(fill="x", pady=(0,10))
+        
+        input_inner = ttk.Frame(input_frame)
+        input_inner.pack(padx=10, pady=10)
+        
+        self.gutter_okap_length = tk.DoubleVar(value=20.0)
+        self.gutter_roof_height = tk.DoubleVar(value=5.0)
+        self.gutter_num_downpipes = tk.IntVar(value=0)
+        
+        ttk.Label(input_inner, text="Długość okapu [m]:").grid(row=0, column=0, sticky="w", pady=4)
+        ttk.Entry(input_inner, textvariable=self.gutter_okap_length, width=12).grid(row=0, column=1, padx=8, pady=4)
+        
+        ttk.Label(input_inner, text="Wysokość dachu (rury spustowej) [m]:").grid(row=1, column=0, sticky="w", pady=4)
+        ttk.Entry(input_inner, textvariable=self.gutter_roof_height, width=12).grid(row=1, column=1, padx=8, pady=4)
+        
+        ttk.Label(input_inner, text="Liczba rur spustowych (0=auto):").grid(row=2, column=0, sticky="w", pady=4)
+        ttk.Entry(input_inner, textvariable=self.gutter_num_downpipes, width=12).grid(row=2, column=1, padx=8, pady=4)
+        
+        ttk.Button(main, text="📊 Oblicz orynnowanie", command=self.calculate_gutters, style='Accent.TButton').pack(pady=10)
+        
+        # Results section
+        results_frame = ttk.LabelFrame(main, text="📋 Wyniki obliczeń")
+        results_frame.pack(fill="both", expand=True)
+        
+        self.gutter_results_text = tk.Text(results_frame, height=15, state="disabled", bg=COLORS['bg_white'], font=("Segoe UI", 10))
+        self.gutter_results_text.pack(fill="both", expand=True, padx=8, pady=8)
+        
+        ttk.Button(main, text="➕ Dodaj pozycje do kosztorysu", command=self.add_gutter_items, style='Success.TButton').pack(pady=10)
+    
+    def calculate_gutters(self):
+        """Calculate guttering requirements"""
+        try:
+            okap = self.gutter_okap_length.get()
+            height = self.gutter_roof_height.get()
+            num_dp = self.gutter_num_downpipes.get() if self.gutter_num_downpipes.get() > 0 else None
+            
+            if CALC_MODULES_AVAILABLE:
+                results = calculate_guttering(okap, height, num_dp)
+            else:
+                # Fallback calculation
+                num_downpipes = num_dp if num_dp else max(1, math.ceil(okap / 10.0))
+                results = {
+                    "total_gutter_length_m": okap,
+                    "total_downpipe_length_m": num_downpipes * height,
+                    "num_downpipes": num_downpipes,
+                    "num_gutter_hooks": math.ceil(okap / 0.5) if okap > 0 else 0,
+                    "num_gutter_connectors": max(0, math.ceil(okap / 3.0) - 1),
+                    "num_downpipe_outlets": num_downpipes,
+                    "num_downpipe_clamps": math.ceil(num_downpipes * height / 2.0) if height > 0 else 0,
+                    "num_downpipe_elbows": num_downpipes * 2,
+                    "num_end_caps": 2
+                }
+            
+            output = []
+            output.append("🌧️ KALKULATOR ORYNNOWANIA")
+            output.append("=" * 40)
+            output.append("")
+            output.append(f"📏 Długość rynny: {results['total_gutter_length_m']:.2f} m")
+            output.append(f"📏 Długość rur spustowych: {results['total_downpipe_length_m']:.2f} m")
+            output.append(f"🔢 Liczba rur spustowych: {results['num_downpipes']}")
+            output.append("")
+            output.append("📦 Akcesoria:")
+            output.append(f"   • Haki rynnowe: {results['num_gutter_hooks']} szt.")
+            output.append(f"   • Łączniki rynien: {results['num_gutter_connectors']} szt.")
+            output.append(f"   • Wyloty do rur: {results['num_downpipe_outlets']} szt.")
+            output.append(f"   • Obejmy rurowe: {results['num_downpipe_clamps']} szt.")
+            output.append(f"   • Kolanka: {results['num_downpipe_elbows']} szt.")
+            output.append(f"   • Zaślepki: {results['num_end_caps']} szt.")
+            
+            self.gutter_results_text.config(state="normal")
+            self.gutter_results_text.delete("1.0", "end")
+            self.gutter_results_text.insert("1.0", "\n".join(output))
+            self.gutter_results_text.config(state="disabled")
+            
+            self._last_gutter_calc = results
+            
+        except Exception as e:
+            messagebox.showerror("Błąd obliczeń", f"Wystąpił błąd: {e}")
+    
+    def add_gutter_items(self):
+        """Add gutter items to cost estimate"""
+        if not hasattr(self, '_last_gutter_calc') or not self._last_gutter_calc:
+            messagebox.showwarning("Brak danych", "Najpierw oblicz orynnowanie.")
+            return
+        
+        r = self._last_gutter_calc
+        items = [
+            {"name": "Rynna", "quantity": r['total_gutter_length_m'], "unit": "mb", "price_unit_net": 25.0, "vat_rate": 8, "category": "material"},
+            {"name": "Rura spustowa", "quantity": r['total_downpipe_length_m'], "unit": "mb", "price_unit_net": 28.0, "vat_rate": 8, "category": "material"},
+            {"name": "Haki rynnowe", "quantity": r['num_gutter_hooks'], "unit": "szt.", "price_unit_net": 8.0, "vat_rate": 8, "category": "material"},
+            {"name": "Łączniki rynien", "quantity": r['num_gutter_connectors'], "unit": "szt.", "price_unit_net": 12.0, "vat_rate": 8, "category": "material"},
+            {"name": "Montaż orynnowania", "quantity": r['total_gutter_length_m'], "unit": "mb", "price_unit_net": 15.0, "vat_rate": 8, "category": "service"},
+        ]
+        
+        for item in items:
+            item["note"] = ""
+            self.cost_items.append(item)
+        
+        self._refresh_cost_ui()
+        messagebox.showinfo("Dodano", f"Dodano {len(items)} pozycji orynnowania do kosztorysu.")
+        self.notebook.select(self.cost_tab)
+    
+    def create_chimney_tab(self):
+        """Create chimney calculation tab"""
+        self.chimney_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.chimney_tab, text="🏭 Kominy")
+        
+        main = ttk.Frame(self.chimney_tab)
+        main.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        input_frame = ttk.LabelFrame(main, text="📏 Parametry komina")
+        input_frame.pack(fill="x", pady=(0,10))
+        
+        input_inner = ttk.Frame(input_frame)
+        input_inner.pack(padx=10, pady=10)
+        
+        self.chimney_width = tk.DoubleVar(value=0.5)
+        self.chimney_length = tk.DoubleVar(value=0.5)
+        self.chimney_height = tk.DoubleVar(value=1.0)
+        self.chimney_num = tk.IntVar(value=1)
+        self.chimney_covering = tk.StringVar(value="papa")
+        
+        ttk.Label(input_inner, text="Szerokość komina [m]:").grid(row=0, column=0, sticky="w", pady=4)
+        ttk.Entry(input_inner, textvariable=self.chimney_width, width=12).grid(row=0, column=1, padx=8, pady=4)
+        
+        ttk.Label(input_inner, text="Długość komina [m]:").grid(row=1, column=0, sticky="w", pady=4)
+        ttk.Entry(input_inner, textvariable=self.chimney_length, width=12).grid(row=1, column=1, padx=8, pady=4)
+        
+        ttk.Label(input_inner, text="Wysokość nad dachem [m]:").grid(row=2, column=0, sticky="w", pady=4)
+        ttk.Entry(input_inner, textvariable=self.chimney_height, width=12).grid(row=2, column=1, padx=8, pady=4)
+        
+        ttk.Label(input_inner, text="Liczba kominów:").grid(row=3, column=0, sticky="w", pady=4)
+        ttk.Entry(input_inner, textvariable=self.chimney_num, width=12).grid(row=3, column=1, padx=8, pady=4)
+        
+        ttk.Label(input_inner, text="Typ pokrycia:").grid(row=4, column=0, sticky="w", pady=4)
+        covering_cb = ttk.Combobox(input_inner, textvariable=self.chimney_covering, values=["papa", "blacha", "dachówka"], width=12, state="readonly")
+        covering_cb.grid(row=4, column=1, padx=8, pady=4)
+        
+        ttk.Button(main, text="📊 Oblicz obróbki kominowe", command=self.calculate_chimneys, style='Accent.TButton').pack(pady=10)
+        
+        results_frame = ttk.LabelFrame(main, text="📋 Wyniki obliczeń")
+        results_frame.pack(fill="both", expand=True)
+        
+        self.chimney_results_text = tk.Text(results_frame, height=12, state="disabled", bg=COLORS['bg_white'], font=("Segoe UI", 10))
+        self.chimney_results_text.pack(fill="both", expand=True, padx=8, pady=8)
+        
+        ttk.Button(main, text="➕ Dodaj pozycje do kosztorysu", command=self.add_chimney_items, style='Success.TButton').pack(pady=10)
+    
+    def calculate_chimneys(self):
+        """Calculate chimney flashing requirements"""
+        try:
+            w = self.chimney_width.get()
+            l = self.chimney_length.get()
+            h = self.chimney_height.get()
+            num = self.chimney_num.get()
+            covering = self.chimney_covering.get()
+            
+            if CALC_MODULES_AVAILABLE:
+                results = calculate_chimney_flashings(w, l, h, self.roof_angle.get(), covering, num)
+            else:
+                perimeter = 2 * (w + l)
+                flashing_surface = perimeter * 0.5 + perimeter * (h + 0.2)
+                cap_surface = (w + 0.1) * (l + 0.1)
+                results = {
+                    "total_metal_flashing_surface_m2": flashing_surface * num,
+                    "num_metal_sheets_flashing": math.ceil(flashing_surface * num / (1.25 * 2.5)),
+                    "total_chimney_cap_surface_m2": cap_surface * num,
+                    "num_metal_sheets_cap": math.ceil(cap_surface * num / (1.25 * 2.5)),
+                    "total_felt_flashing_surface_m2": perimeter * 0.5 * num if covering == "papa" else 0,
+                    "total_clamping_strip_length_m": perimeter * num if covering == "papa" else 0,
+                    "single_chimney_perimeter": perimeter
+                }
+            
+            output = []
+            output.append("🏭 KALKULATOR OBRÓBEK KOMINOWYCH")
+            output.append("=" * 40)
+            output.append("")
+            output.append(f"📏 Obwód komina: {results['single_chimney_perimeter']:.2f} m")
+            output.append(f"📐 Powierzchnia obróbek blaszanych: {results['total_metal_flashing_surface_m2']:.2f} m²")
+            output.append(f"📦 Arkusze blachy na obróbki: {results['num_metal_sheets_flashing']} szt.")
+            output.append(f"📐 Powierzchnia czapy: {results['total_chimney_cap_surface_m2']:.2f} m²")
+            output.append(f"📦 Arkusze blachy na czapę: {results['num_metal_sheets_cap']} szt.")
+            if results['total_felt_flashing_surface_m2'] > 0:
+                output.append(f"📐 Papa na obróbki: {results['total_felt_flashing_surface_m2']:.2f} m²")
+                output.append(f"📏 Listwa dociskowa: {results['total_clamping_strip_length_m']:.2f} m")
+            
+            self.chimney_results_text.config(state="normal")
+            self.chimney_results_text.delete("1.0", "end")
+            self.chimney_results_text.insert("1.0", "\n".join(output))
+            self.chimney_results_text.config(state="disabled")
+            
+            self._last_chimney_calc = results
+            
+        except Exception as e:
+            messagebox.showerror("Błąd obliczeń", f"Wystąpił błąd: {e}")
+    
+    def add_chimney_items(self):
+        """Add chimney items to cost estimate"""
+        if not hasattr(self, '_last_chimney_calc') or not self._last_chimney_calc:
+            messagebox.showwarning("Brak danych", "Najpierw oblicz obróbki kominowe.")
+            return
+        
+        r = self._last_chimney_calc
+        items = [
+            {"name": "Blacha na obróbki kominowe", "quantity": r['num_metal_sheets_flashing'], "unit": "ark.", "price_unit_net": 98.0, "vat_rate": 8, "category": "material"},
+            {"name": "Blacha na czapę kominową", "quantity": r['num_metal_sheets_cap'], "unit": "ark.", "price_unit_net": 98.0, "vat_rate": 8, "category": "material"},
+            {"name": "Montaż obróbek kominowych", "quantity": self.chimney_num.get(), "unit": "szt.", "price_unit_net": 350.0, "vat_rate": 8, "category": "service"},
+        ]
+        
+        if r['total_felt_flashing_surface_m2'] > 0:
+            items.append({"name": "Papa na obróbki kominowe", "quantity": r['total_felt_flashing_surface_m2'], "unit": "m²", "price_unit_net": 28.6, "vat_rate": 8, "category": "material"})
+            items.append({"name": "Listwa dociskowa", "quantity": r['total_clamping_strip_length_m'], "unit": "mb", "price_unit_net": 15.0, "vat_rate": 8, "category": "material"})
+        
+        for item in items:
+            item["note"] = ""
+            self.cost_items.append(item)
+        
+        self._refresh_cost_ui()
+        messagebox.showinfo("Dodano", f"Dodano {len(items)} pozycji kominowych do kosztorysu.")
+        self.notebook.select(self.cost_tab)
+    
+    def create_flashing_tab(self):
+        """Create flashing/trim calculation tab"""
+        self.flashing_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.flashing_tab, text="🔧 Obróbki")
+        
+        main = ttk.Frame(self.flashing_tab)
+        main.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Description
+        desc_label = ttk.Label(main, text="Oblicz ilość blachy potrzebnej na obróbki blacharskie (wiatrownice, okapnice, pasy nadrynnowe itp.)", font=("Segoe UI", 10))
+        desc_label.pack(pady=(0,10))
+        
+        # Flashing items list
+        input_frame = ttk.LabelFrame(main, text="📋 Obróbki blacharskie")
+        input_frame.pack(fill="both", expand=True, pady=(0,10))
+        
+        # Create a list of common flashing types
+        self.flashing_items = {}
+        flashing_types = [
+            ("Wiatrownica", 0.0, 0.35),
+            ("Okapnica", 0.0, 0.25),
+            ("Pas nadrynnowy", 0.0, 0.20),
+            ("Gąsior", 0.0, 0.40),
+            ("Pas przyścienny", 0.0, 0.30),
+            ("Kosz", 0.0, 0.50),
+        ]
+        
+        cols = ("name", "length", "width", "area")
+        self.flashing_tree = ttk.Treeview(input_frame, columns=cols, show="headings", height=8)
+        for c,h in zip(cols, ("Nazwa obróbki", "Długość [m]", "Szer. rozwinięcia [m]", "Powierzchnia [m²]")):
+            self.flashing_tree.heading(c, text=h)
+            self.flashing_tree.column(c, width=180 if c=="name" else 120, anchor="center" if c!="name" else "w")
+        self.flashing_tree.pack(fill="both", expand=True, padx=8, pady=8)
+        
+        for name, length, width in flashing_types:
+            self.flashing_tree.insert("", "end", values=(name, f"{length:.2f}", f"{width:.2f}", f"{length*width:.2f}"))
+        
+        # Edit controls
+        edit_frame = ttk.Frame(main)
+        edit_frame.pack(fill="x", pady=5)
+        
+        ttk.Label(edit_frame, text="Długość:").pack(side="left", padx=4)
+        self.flashing_length_entry = ttk.Entry(edit_frame, width=10)
+        self.flashing_length_entry.pack(side="left", padx=4)
+        
+        ttk.Button(edit_frame, text="Aktualizuj zaznaczone", command=self.update_flashing_length).pack(side="left", padx=10)
+        
+        # Results
+        result_frame = ttk.Frame(main)
+        result_frame.pack(fill="x", pady=10)
+        
+        self.flashing_total_label = ttk.Label(result_frame, text="Suma powierzchni: 0.00 m² | Arkusze blachy (1.25x2.5m): 0 szt.", font=("Segoe UI", 11, "bold"))
+        self.flashing_total_label.pack(side="left")
+        
+        ttk.Button(main, text="➕ Dodaj pozycje do kosztorysu", command=self.add_flashing_items, style='Success.TButton').pack(pady=10)
+    
+    def update_flashing_length(self):
+        """Update the length of selected flashing item"""
+        sel = self.flashing_tree.selection()
+        if not sel:
+            messagebox.showwarning("Brak zaznaczenia", "Wybierz pozycję do aktualizacji.")
+            return
+        
+        try:
+            length = float(self.flashing_length_entry.get().replace(",", "."))
+            for item_id in sel:
+                values = self.flashing_tree.item(item_id)['values']
+                name = values[0]
+                width = float(values[2])
+                area = length * width
+                self.flashing_tree.item(item_id, values=(name, f"{length:.2f}", f"{width:.2f}", f"{area:.2f}"))
+            
+            self._update_flashing_totals()
+        except ValueError:
+            messagebox.showerror("Błąd", "Podaj prawidłową wartość długości.")
+    
+    def _update_flashing_totals(self):
+        """Update flashing totals display"""
+        total_area = 0.0
+        for item_id in self.flashing_tree.get_children():
+            values = self.flashing_tree.item(item_id)['values']
+            total_area += float(values[3])
+        
+        sheet_area = 1.25 * 2.5
+        num_sheets = math.ceil(total_area / sheet_area) if total_area > 0 else 0
+        self.flashing_total_label.config(text=f"Suma powierzchni: {total_area:.2f} m² | Arkusze blachy (1.25x2.5m): {num_sheets} szt.")
+    
+    def add_flashing_items(self):
+        """Add flashing items to cost estimate"""
+        items_added = 0
+        for item_id in self.flashing_tree.get_children():
+            values = self.flashing_tree.item(item_id)['values']
+            length = float(values[1])
+            if length > 0:
+                item = {
+                    "name": f"Obróbka - {values[0]}", 
+                    "quantity": length, 
+                    "unit": "mb", 
+                    "price_unit_net": 35.0, 
+                    "vat_rate": 8, 
+                    "category": "material",
+                    "note": f"Szerokość rozwinięcia: {values[2]} m"
+                }
+                self.cost_items.append(item)
+                items_added += 1
+        
+        if items_added > 0:
+            self._refresh_cost_ui()
+            messagebox.showinfo("Dodano", f"Dodano {items_added} pozycji obróbek do kosztorysu.")
+            self.notebook.select(self.cost_tab)
+        else:
+            messagebox.showwarning("Brak pozycji", "Nie ma pozycji z długością większą niż 0 do dodania.")
 
 # Run
 if __name__ == "__main__":
