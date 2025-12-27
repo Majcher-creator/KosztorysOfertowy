@@ -37,6 +37,14 @@ try:
 except Exception:
     REPORTLAB_AVAILABLE = False
 
+# openpyxl for Excel export
+try:
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    OPENPYXL_AVAILABLE = True
+except Exception:
+    OPENPYXL_AVAILABLE = False
+
 # ---------------- Helpers ----------------
 def fmt_money_plain(v: float) -> str:
     s = f"{v:,.2f}"
@@ -457,6 +465,7 @@ class RoofCalculatorApp:
         toolbar = ttk.Frame(left); toolbar.pack(fill="x", pady=(0,6))
         ttk.Button(toolbar, text="Oblicz kosztorys", command=self.calculate_cost_estimation).pack(side="left", padx=4)
         ttk.Button(toolbar, text="Eksportuj CSV", command=self.export_cost_csv).pack(side="left", padx=4)
+        ttk.Button(toolbar, text="Eksportuj Excel", command=self.export_cost_excel).pack(side="left", padx=4)
         ttk.Button(toolbar, text="Eksportuj PDF", command=self.export_cost_pdf).pack(side="left", padx=4)
         ttk.Separator(toolbar, orient="vertical").pack(side="left", fill="y", padx=8)
         ttk.Button(toolbar, text="Edytuj zaznaczoną", command=self._edit_selected_item).pack(side="left", padx=4)
@@ -959,6 +968,248 @@ class RoofCalculatorApp:
             messagebox.showinfo("Eksport CSV", f"Zapisano CSV: {path}")
         except Exception as e:
             messagebox.showerror("Błąd", f"Nie udało się zapisać CSV:\n{e}")
+    
+    def export_cost_excel(self):
+        """Export cost estimate to Excel with formatting"""
+        if not OPENPYXL_AVAILABLE:
+            messagebox.showerror("Brak biblioteki", "Zainstaluj openpyxl: pip install openpyxl"); return
+        if not self.cost_items:
+            messagebox.showwarning("Brak pozycji", "Brak pozycji do eksportu."); return
+        
+        path = filedialog.asksaveasfilename(
+            defaultextension=".xlsx",
+            filetypes=[("Excel", "*.xlsx"), ("All", "*.*")]
+        )
+        if not path:
+            return
+        
+        try:
+            # Calculate totals
+            totals = compute_totals_local(
+                self.cost_items,
+                float(self.transport_percent.get() or 0.0),
+                int(self.transport_vat.get() or 23)
+            )
+            items_aug = totals["items"]
+            
+            # Separate materials and services
+            materials = [it for it in items_aug if it.get("category", "material") == "material"]
+            services = [it for it in items_aug if it.get("category", "material") == "service"]
+            
+            # Create workbook
+            wb = Workbook()
+            
+            # Define styles
+            header_font = Font(bold=True, size=11)
+            header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+            header_alignment = Alignment(horizontal="center", vertical="center")
+            
+            material_fill = PatternFill(start_color="E7E6E6", end_color="E7E6E6", fill_type="solid")
+            service_fill = PatternFill(start_color="DCE6F1", end_color="DCE6F1", fill_type="solid")
+            
+            currency_format = '#,##0.00 "zł"'
+            number_format = '#,##0.000'
+            
+            border = Border(
+                left=Side(style='thin'),
+                right=Side(style='thin'),
+                top=Side(style='thin'),
+                bottom=Side(style='thin')
+            )
+            
+            # Materials sheet
+            ws_mat = wb.active
+            ws_mat.title = "Materiały"
+            
+            # Headers
+            headers = ["Lp", "Nazwa", "Ilość", "JM", "Cena netto", "VAT %", "Wartość netto", "VAT", "Wartość brutto"]
+            for col_num, header in enumerate(headers, 1):
+                cell = ws_mat.cell(row=1, column=col_num, value=header)
+                cell.font = Font(bold=True, color="FFFFFF", size=11)
+                cell.fill = header_fill
+                cell.alignment = header_alignment
+                cell.border = border
+            
+            # Data rows for materials
+            for row_num, item in enumerate(materials, 2):
+                ws_mat.cell(row=row_num, column=1, value=row_num - 1).border = border
+                ws_mat.cell(row=row_num, column=2, value=item.get("name", "")).border = border
+                
+                qty_cell = ws_mat.cell(row=row_num, column=3, value=float(item.get("quantity", 0.0)))
+                qty_cell.number_format = number_format
+                qty_cell.alignment = Alignment(horizontal="right")
+                qty_cell.border = border
+                
+                ws_mat.cell(row=row_num, column=4, value=item.get("unit", "")).border = border
+                
+                price_cell = ws_mat.cell(row=row_num, column=5, value=float(item.get("price_unit_net", 0.0)))
+                price_cell.number_format = currency_format
+                price_cell.alignment = Alignment(horizontal="right")
+                price_cell.border = border
+                
+                ws_mat.cell(row=row_num, column=6, value=int(item.get("vat_rate", 0))).border = border
+                
+                net_cell = ws_mat.cell(row=row_num, column=7, value=float(item.get("total_net", 0.0)))
+                net_cell.number_format = currency_format
+                net_cell.alignment = Alignment(horizontal="right")
+                net_cell.fill = material_fill
+                net_cell.border = border
+                
+                vat_cell = ws_mat.cell(row=row_num, column=8, value=float(item.get("vat_value", 0.0)))
+                vat_cell.number_format = currency_format
+                vat_cell.alignment = Alignment(horizontal="right")
+                vat_cell.fill = material_fill
+                vat_cell.border = border
+                
+                gross_cell = ws_mat.cell(row=row_num, column=9, value=float(item.get("total_gross", 0.0)))
+                gross_cell.number_format = currency_format
+                gross_cell.alignment = Alignment(horizontal="right")
+                gross_cell.fill = material_fill
+                gross_cell.border = border
+            
+            # Adjust column widths
+            ws_mat.column_dimensions['A'].width = 6
+            ws_mat.column_dimensions['B'].width = 40
+            ws_mat.column_dimensions['C'].width = 12
+            ws_mat.column_dimensions['D'].width = 8
+            ws_mat.column_dimensions['E'].width = 14
+            ws_mat.column_dimensions['F'].width = 9
+            ws_mat.column_dimensions['G'].width = 16
+            ws_mat.column_dimensions['H'].width = 14
+            ws_mat.column_dimensions['I'].width = 16
+            
+            # Services sheet
+            ws_srv = wb.create_sheet("Usługi")
+            
+            # Headers
+            for col_num, header in enumerate(headers, 1):
+                cell = ws_srv.cell(row=1, column=col_num, value=header)
+                cell.font = Font(bold=True, color="FFFFFF", size=11)
+                cell.fill = header_fill
+                cell.alignment = header_alignment
+                cell.border = border
+            
+            # Data rows for services
+            for row_num, item in enumerate(services, 2):
+                ws_srv.cell(row=row_num, column=1, value=row_num - 1).border = border
+                ws_srv.cell(row=row_num, column=2, value=item.get("name", "")).border = border
+                
+                qty_cell = ws_srv.cell(row=row_num, column=3, value=float(item.get("quantity", 0.0)))
+                qty_cell.number_format = number_format
+                qty_cell.alignment = Alignment(horizontal="right")
+                qty_cell.border = border
+                
+                ws_srv.cell(row=row_num, column=4, value=item.get("unit", "")).border = border
+                
+                price_cell = ws_srv.cell(row=row_num, column=5, value=float(item.get("price_unit_net", 0.0)))
+                price_cell.number_format = currency_format
+                price_cell.alignment = Alignment(horizontal="right")
+                price_cell.border = border
+                
+                ws_srv.cell(row=row_num, column=6, value=int(item.get("vat_rate", 0))).border = border
+                
+                net_cell = ws_srv.cell(row=row_num, column=7, value=float(item.get("total_net", 0.0)))
+                net_cell.number_format = currency_format
+                net_cell.alignment = Alignment(horizontal="right")
+                net_cell.fill = service_fill
+                net_cell.border = border
+                
+                vat_cell = ws_srv.cell(row=row_num, column=8, value=float(item.get("vat_value", 0.0)))
+                vat_cell.number_format = currency_format
+                vat_cell.alignment = Alignment(horizontal="right")
+                vat_cell.fill = service_fill
+                vat_cell.border = border
+                
+                gross_cell = ws_srv.cell(row=row_num, column=9, value=float(item.get("total_gross", 0.0)))
+                gross_cell.number_format = currency_format
+                gross_cell.alignment = Alignment(horizontal="right")
+                gross_cell.fill = service_fill
+                gross_cell.border = border
+            
+            # Adjust column widths
+            ws_srv.column_dimensions['A'].width = 6
+            ws_srv.column_dimensions['B'].width = 40
+            ws_srv.column_dimensions['C'].width = 12
+            ws_srv.column_dimensions['D'].width = 8
+            ws_srv.column_dimensions['E'].width = 14
+            ws_srv.column_dimensions['F'].width = 9
+            ws_srv.column_dimensions['G'].width = 16
+            ws_srv.column_dimensions['H'].width = 14
+            ws_srv.column_dimensions['I'].width = 16
+            
+            # Summary sheet
+            ws_sum = wb.create_sheet("Podsumowanie")
+            
+            row = 1
+            # Client info
+            client_name = self.client_cb.get() if hasattr(self, "client_cb") else ""
+            if client_name:
+                ws_sum.cell(row=row, column=1, value="Klient:").font = Font(bold=True)
+                ws_sum.cell(row=row, column=2, value=client_name)
+                row += 1
+            
+            # Invoice info
+            ws_sum.cell(row=row, column=1, value="Nr kosztorysu:").font = Font(bold=True)
+            ws_sum.cell(row=row, column=2, value=self.invoice_number.get())
+            row += 1
+            
+            ws_sum.cell(row=row, column=1, value="Data:").font = Font(bold=True)
+            ws_sum.cell(row=row, column=2, value=self.invoice_date.get())
+            row += 2
+            
+            # Summary by VAT
+            ws_sum.cell(row=row, column=1, value="Podsumowanie wg VAT").font = Font(bold=True, size=12)
+            row += 1
+            
+            for vat_rate, vat_data in sorted(totals["by_vat"].items()):
+                ws_sum.cell(row=row, column=1, value=f"VAT {vat_rate}%:")
+                ws_sum.cell(row=row, column=2, value=f"Netto: {vat_data['net']:.2f} zł")
+                ws_sum.cell(row=row, column=3, value=f"VAT: {vat_data['vat']:.2f} zł")
+                ws_sum.cell(row=row, column=4, value=f"Brutto: {vat_data['gross']:.2f} zł")
+                row += 1
+            
+            row += 1
+            
+            # Summary by category
+            ws_sum.cell(row=row, column=1, value="Podsumowanie wg kategorii").font = Font(bold=True, size=12)
+            row += 1
+            
+            for cat, cat_data in totals["by_category"].items():
+                cat_name = "Materiały" if cat == "material" else "Usługi"
+                ws_sum.cell(row=row, column=1, value=f"{cat_name}:")
+                ws_sum.cell(row=row, column=2, value=f"Netto: {cat_data['net']:.2f} zł")
+                ws_sum.cell(row=row, column=3, value=f"Brutto: {cat_data['gross']:.2f} zł")
+                row += 1
+            
+            row += 1
+            
+            # Transport
+            trans = totals["transport"]
+            ws_sum.cell(row=row, column=1, value=f"Transport ({trans['percent']}%):").font = Font(bold=True)
+            ws_sum.cell(row=row, column=2, value=f"Netto: {trans['net']:.2f} zł")
+            ws_sum.cell(row=row, column=3, value=f"VAT: {trans['vat']:.2f} zł")
+            ws_sum.cell(row=row, column=4, value=f"Brutto: {trans['gross']:.2f} zł")
+            row += 2
+            
+            # Grand total
+            summ = totals["summary"]
+            ws_sum.cell(row=row, column=1, value="SUMA KOŃCOWA:").font = Font(bold=True, size=14)
+            ws_sum.cell(row=row, column=2, value=f"Netto: {summ['net']:.2f} zł").font = Font(bold=True)
+            ws_sum.cell(row=row, column=3, value=f"VAT: {summ['vat']:.2f} zł").font = Font(bold=True)
+            ws_sum.cell(row=row, column=4, value=f"Brutto: {summ['gross']:.2f} zł").font = Font(bold=True, size=14)
+            
+            # Adjust column widths
+            ws_sum.column_dimensions['A'].width = 25
+            ws_sum.column_dimensions['B'].width = 20
+            ws_sum.column_dimensions['C'].width = 20
+            ws_sum.column_dimensions['D'].width = 20
+            
+            # Save workbook
+            wb.save(path)
+            messagebox.showinfo("Eksport Excel", f"Zapisano Excel: {path}")
+            
+        except Exception as e:
+            messagebox.showerror("Błąd", f"Nie udało się zapisać Excel:\n{e}")
 
     # export PDF (kept from previous working implementation)
     def export_cost_pdf(self):
