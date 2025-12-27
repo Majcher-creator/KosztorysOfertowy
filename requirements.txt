@@ -1,0 +1,9 @@
+# Required packages for Kalkulator Dachów
+# Core PDF generation
+reportlab>=3.6.0
+
+# Image processing for logos
+Pillow>=9.0.0
+
+# Excel export
+openpyxl>=3.0.0

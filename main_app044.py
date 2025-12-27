@@ -1,15 +1,27 @@
 #!/usr/bin/env python3
-# main_app045.py
-# Kalkulator Dachów - v4.5
-# Zmiany:
-# - Przechowywanie ostatniego numeru kosztorysu w settings.json (klucz last_invoice_seq i last_invoice_year).
-#   Dzięki temu numer jest generowany szybko i niezawodnie bez parsowania katalogu.
-# - Poprawka błędu AttributeError: missing calculate_cost_estimation (metoda dodana).
-# - Pełny, zaktualizowany plik aplikacji z wszystkimi funkcjami poprzednich wersji.
+# main_app044.py
+# Kalkulator Dachów - v5.0
+# 
+# Nowe funkcje w wersji 5.0:
+# - Skróty klawiaturowe: Delete (usuń), Enter (edytuj), +/- (zmień ilość), Ctrl+D (duplikuj)
+# - Menu kontekstowe (prawy przycisk myszy) z opcjami: edytuj, usuń, duplikuj, zmień ilość, przenieś kategorię
+# - Przyciski Edytuj/Usuń przeniesione do górnego paska narzędzi (zawsze widoczne)
+# - Eksport do Excel (.xlsx) z profesjonalnym formatowaniem i osobnymi arkuszami
+# - Rozszerzone obliczenia orynnowania z wyborem systemu (PVC, Metal, Miedź, itd.)
+# - Moduł definicji obróbek blacharskich z 8 predefiniowanymi typami
+# - System zarządzania szablonami kosztorysów (3 predefiniowane szablony)
+# - Wersjonowanie kosztorysów (max 10 wersji, porównywanie, przywracanie)
+# - Walidacja kosztorysów z ostrzeżeniami o brakujących materiałach
+# - Testy jednostkowe dla nowych modułów (34 testy)
 #
-# Wymagane (opcjonalne do PDF/logo): pip install reportlab pillow
+# Poprzednie wersje (v4.5):
+# - Przechowywanie ostatniego numeru kosztorysu w settings.json
+# - Poprawka błędu AttributeError: missing calculate_cost_estimation
 #
-# Uruchom: python3.12 main_app045.py
+# Wymagane zależności: pip install -r requirements.txt
+# (reportlab, pillow, openpyxl)
+#
+# Uruchom: python3 main_app044.py
 
 from typing import List, Dict, Any, Optional
 import tkinter as tk
@@ -36,6 +48,14 @@ try:
     REPORTLAB_AVAILABLE = True
 except Exception:
     REPORTLAB_AVAILABLE = False
+
+# openpyxl for Excel export
+try:
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    OPENPYXL_AVAILABLE = True
+except Exception:
+    OPENPYXL_AVAILABLE = False
 
 # ---------------- Helpers ----------------
 def fmt_money_plain(v: float) -> str:
@@ -216,7 +236,7 @@ class MaterialEditDialog(simpledialog.Dialog):
 class RoofCalculatorApp:
     def __init__(self, master):
         self.master = master
-        master.title("Kalkulator Dachów - v4.5")
+        master.title("Kalkulator Dachów - v5.0")
         master.geometry("1280x940")
         # data stores
         self.clients: List[Dict[str,Any]] = []
@@ -453,11 +473,15 @@ class RoofCalculatorApp:
         ttk.Label(inv_frame, text="Nazwa kosztorysu:").grid(row=1,column=0,sticky="e"); ttk.Entry(inv_frame,width=30,textvariable=self.quote_name).grid(row=1,column=1,columnspan=4,padx=4)
         ttk.Label(inv_frame, text="Data:").grid(row=0,column=5,sticky="e"); ttk.Entry(inv_frame,width=12,textvariable=self.invoice_date).grid(row=0,column=6,padx=4)
 
-        # toolbar
+        # toolbar with edit/delete buttons always visible
         toolbar = ttk.Frame(left); toolbar.pack(fill="x", pady=(0,6))
         ttk.Button(toolbar, text="Oblicz kosztorys", command=self.calculate_cost_estimation).pack(side="left", padx=4)
         ttk.Button(toolbar, text="Eksportuj CSV", command=self.export_cost_csv).pack(side="left", padx=4)
+        ttk.Button(toolbar, text="Eksportuj Excel", command=self.export_cost_excel).pack(side="left", padx=4)
         ttk.Button(toolbar, text="Eksportuj PDF", command=self.export_cost_pdf).pack(side="left", padx=4)
+        ttk.Separator(toolbar, orient="vertical").pack(side="left", fill="y", padx=8)
+        ttk.Button(toolbar, text="Edytuj zaznaczoną", command=self._edit_selected_item).pack(side="left", padx=4)
+        ttk.Button(toolbar, text="Usuń zaznaczoną", command=self._delete_selected_item).pack(side="left", padx=4)
         ttk.Button(toolbar, text="Wstaw z bazy", command=self.manage_materials_db).pack(side="right", padx=4)
         ttk.Button(toolbar, text="Klienci", command=self.manage_clients).pack(side="right", padx=4)
 
@@ -485,9 +509,6 @@ class RoofCalculatorApp:
         self.mat_tree.configure(yscrollcommand=mat_vscroll.set)
         self.mat_tree.pack(side="left", fill="both", expand=True)
         mat_vscroll.pack(side="right", fill="y")
-        mat_btnf = ttk.Frame(mat_frame); mat_btnf.pack(fill="x", padx=6, pady=4)
-        ttk.Button(mat_btnf, text="Edytuj zaznaczoną", command=lambda: self._edit_from_tree("material")).pack(side="left", padx=4)
-        ttk.Button(mat_btnf, text="Usuń zaznaczoną", command=lambda: self._delete_from_tree("material")).pack(side="left", padx=4)
 
         # services tree with scrollbar
         srv_tree_container = ttk.Frame(srv_frame); srv_tree_container.pack(fill="both", expand=True, padx=6, pady=6)
@@ -500,9 +521,6 @@ class RoofCalculatorApp:
         self.srv_tree.configure(yscrollcommand=srv_vscroll.set)
         self.srv_tree.pack(side="left", fill="both", expand=True)
         srv_vscroll.pack(side="right", fill="y")
-        srv_btnf = ttk.Frame(srv_frame); srv_btnf.pack(fill="x", padx=6, pady=4)
-        ttk.Button(srv_btnf, text="Edytuj zaznaczoną", command=lambda: self._edit_from_tree("service")).pack(side="left", padx=4)
-        ttk.Button(srv_btnf, text="Usuń zaznaczoną", command=lambda: self._delete_from_tree("service")).pack(side="left", padx=4)
 
         # right panel (add item / client / transport / summary)
         right = ttk.Frame(right_container); right.pack(fill="both", expand=True, padx=4, pady=4)
@@ -533,6 +551,27 @@ class RoofCalculatorApp:
         # double-click edit bindings
         self.mat_tree.bind("<Double-1>", lambda e: self._edit_from_tree("material"))
         self.srv_tree.bind("<Double-1>", lambda e: self._edit_from_tree("service"))
+        
+        # keyboard shortcuts for both trees
+        self.mat_tree.bind("<Delete>", lambda e: self._delete_from_tree("material"))
+        self.mat_tree.bind("<Return>", lambda e: self._edit_from_tree("material"))
+        self.mat_tree.bind("<KP_Add>", lambda e: self._adjust_quantity("material", 1))
+        self.mat_tree.bind("<plus>", lambda e: self._adjust_quantity("material", 1))
+        self.mat_tree.bind("<KP_Subtract>", lambda e: self._adjust_quantity("material", -1))
+        self.mat_tree.bind("<minus>", lambda e: self._adjust_quantity("material", -1))
+        self.mat_tree.bind("<Control-d>", lambda e: self._duplicate_item("material"))
+        
+        self.srv_tree.bind("<Delete>", lambda e: self._delete_from_tree("service"))
+        self.srv_tree.bind("<Return>", lambda e: self._edit_from_tree("service"))
+        self.srv_tree.bind("<KP_Add>", lambda e: self._adjust_quantity("service", 1))
+        self.srv_tree.bind("<plus>", lambda e: self._adjust_quantity("service", 1))
+        self.srv_tree.bind("<KP_Subtract>", lambda e: self._adjust_quantity("service", -1))
+        self.srv_tree.bind("<minus>", lambda e: self._adjust_quantity("service", -1))
+        self.srv_tree.bind("<Control-d>", lambda e: self._duplicate_item("service"))
+        
+        # context menu (right-click)
+        self.mat_tree.bind("<Button-3>", lambda e: self._show_context_menu(e, "material"))
+        self.srv_tree.bind("<Button-3>", lambda e: self._show_context_menu(e, "service"))
 
         self._refresh_cost_ui()
 
@@ -587,6 +626,106 @@ class RoofCalculatorApp:
         idx = int(sel[0])
         if not messagebox.askyesno("Usuń","Usunąć pozycję?"): return
         del self.cost_items[idx]; self._refresh_cost_ui()
+    
+    def _edit_selected_item(self):
+        """Edit item from either tree (toolbar button)"""
+        # Check which tree has focus
+        focused = self.master.focus_get()
+        if focused == self.mat_tree or str(focused).endswith(str(self.mat_tree)):
+            if self.mat_tree.selection():
+                self._edit_from_tree("material")
+                return
+        if focused == self.srv_tree or str(focused).endswith(str(self.srv_tree)):
+            if self.srv_tree.selection():
+                self._edit_from_tree("service")
+                return
+        # If no focus, check which tree has selection
+        if self.mat_tree.selection():
+            self._edit_from_tree("material")
+        elif self.srv_tree.selection():
+            self._edit_from_tree("service")
+        else:
+            messagebox.showwarning("Brak zaznaczenia", "Wybierz pozycję do edycji")
+    
+    def _delete_selected_item(self):
+        """Delete item from either tree (toolbar button)"""
+        # Check which tree has focus
+        focused = self.master.focus_get()
+        if focused == self.mat_tree or str(focused).endswith(str(self.mat_tree)):
+            if self.mat_tree.selection():
+                self._delete_from_tree("material")
+                return
+        if focused == self.srv_tree or str(focused).endswith(str(self.srv_tree)):
+            if self.srv_tree.selection():
+                self._delete_from_tree("service")
+                return
+        # If no focus, check which tree has selection
+        if self.mat_tree.selection():
+            self._delete_from_tree("material")
+        elif self.srv_tree.selection():
+            self._delete_from_tree("service")
+        else:
+            messagebox.showwarning("Brak zaznaczenia", "Wybierz pozycję do usunięcia")
+    
+    def _adjust_quantity(self, kind: str, delta: int):
+        """Adjust quantity of selected item by delta (+1 or -1)"""
+        tree = self.mat_tree if kind=="material" else self.srv_tree
+        sel = tree.selection()
+        if not sel: return
+        idx = int(sel[0])
+        item = self.cost_items[idx]
+        current_qty = float(item.get("quantity", 0.0))
+        new_qty = max(0.0, current_qty + delta)
+        item["quantity"] = new_qty
+        self._refresh_cost_ui()
+        # Re-select the item
+        tree.selection_set(str(idx))
+    
+    def _duplicate_item(self, kind: str):
+        """Duplicate selected item"""
+        tree = self.mat_tree if kind=="material" else self.srv_tree
+        sel = tree.selection()
+        if not sel: return
+        idx = int(sel[0])
+        item = self.cost_items[idx].copy()
+        item["name"] = item.get("name", "") + " (kopia)"
+        self.cost_items.insert(idx + 1, item)
+        self._refresh_cost_ui()
+        # Select the new item
+        tree.selection_set(str(idx + 1))
+    
+    def _show_context_menu(self, event, kind: str):
+        """Show context menu on right-click"""
+        tree = self.mat_tree if kind=="material" else self.srv_tree
+        # Select item under cursor
+        item_id = tree.identify_row(event.y)
+        if item_id:
+            tree.selection_set(item_id)
+            menu = tk.Menu(tree, tearoff=0)
+            menu.add_command(label="Edytuj", command=lambda: self._edit_from_tree(kind))
+            menu.add_command(label="Usuń", command=lambda: self._delete_from_tree(kind))
+            menu.add_separator()
+            menu.add_command(label="Duplikuj", command=lambda: self._duplicate_item(kind))
+            menu.add_command(label="Zwiększ ilość (+1)", command=lambda: self._adjust_quantity(kind, 1))
+            menu.add_command(label="Zmniejsz ilość (-1)", command=lambda: self._adjust_quantity(kind, -1))
+            menu.add_separator()
+            other_kind = "service" if kind == "material" else "material"
+            other_label = "Przenieś do usług" if kind == "material" else "Przenieś do materiałów"
+            menu.add_command(label=other_label, command=lambda: self._move_item_category(kind, other_kind))
+            try:
+                menu.tk_popup(event.x_root, event.y_root)
+            finally:
+                menu.grab_release()
+    
+    def _move_item_category(self, from_kind: str, to_kind: str):
+        """Move item between materials and services"""
+        tree = self.mat_tree if from_kind=="material" else self.srv_tree
+        sel = tree.selection()
+        if not sel: return
+        idx = int(sel[0])
+        item = self.cost_items[idx]
+        item["category"] = to_kind
+        self._refresh_cost_ui()
 
     # calculation / summary (fix for missing method)
     def calculate_cost_estimation(self):
@@ -841,6 +980,248 @@ class RoofCalculatorApp:
             messagebox.showinfo("Eksport CSV", f"Zapisano CSV: {path}")
         except Exception as e:
             messagebox.showerror("Błąd", f"Nie udało się zapisać CSV:\n{e}")
+    
+    def export_cost_excel(self):
+        """Export cost estimate to Excel with formatting"""
+        if not OPENPYXL_AVAILABLE:
+            messagebox.showerror("Brak biblioteki", "Zainstaluj openpyxl: pip install openpyxl"); return
+        if not self.cost_items:
+            messagebox.showwarning("Brak pozycji", "Brak pozycji do eksportu."); return
+        
+        path = filedialog.asksaveasfilename(
+            defaultextension=".xlsx",
+            filetypes=[("Excel", "*.xlsx"), ("All", "*.*")]
+        )
+        if not path:
+            return
+        
+        try:
+            # Calculate totals
+            totals = compute_totals_local(
+                self.cost_items,
+                float(self.transport_percent.get() or 0.0),
+                int(self.transport_vat.get() or 23)
+            )
+            items_aug = totals["items"]
+            
+            # Separate materials and services
+            materials = [it for it in items_aug if it.get("category", "material") == "material"]
+            services = [it for it in items_aug if it.get("category", "service") == "service"]
+            
+            # Create workbook
+            wb = Workbook()
+            
+            # Define styles
+            header_font = Font(bold=True, size=11)
+            header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+            header_alignment = Alignment(horizontal="center", vertical="center")
+            
+            material_fill = PatternFill(start_color="E7E6E6", end_color="E7E6E6", fill_type="solid")
+            service_fill = PatternFill(start_color="DCE6F1", end_color="DCE6F1", fill_type="solid")
+            
+            currency_format = '#,##0.00 "zł"'
+            number_format = '#,##0.000'
+            
+            border = Border(
+                left=Side(style='thin'),
+                right=Side(style='thin'),
+                top=Side(style='thin'),
+                bottom=Side(style='thin')
+            )
+            
+            # Materials sheet
+            ws_mat = wb.active
+            ws_mat.title = "Materiały"
+            
+            # Headers
+            headers = ["Lp", "Nazwa", "Ilość", "JM", "Cena netto", "VAT %", "Wartość netto", "VAT", "Wartość brutto"]
+            for col_num, header in enumerate(headers, 1):
+                cell = ws_mat.cell(row=1, column=col_num, value=header)
+                cell.font = Font(bold=True, color="FFFFFF", size=11)
+                cell.fill = header_fill
+                cell.alignment = header_alignment
+                cell.border = border
+            
+            # Data rows for materials
+            for row_num, item in enumerate(materials, 2):
+                ws_mat.cell(row=row_num, column=1, value=row_num - 1).border = border
+                ws_mat.cell(row=row_num, column=2, value=item.get("name", "")).border = border
+                
+                qty_cell = ws_mat.cell(row=row_num, column=3, value=float(item.get("quantity", 0.0)))
+                qty_cell.number_format = number_format
+                qty_cell.alignment = Alignment(horizontal="right")
+                qty_cell.border = border
+                
+                ws_mat.cell(row=row_num, column=4, value=item.get("unit", "")).border = border
+                
+                price_cell = ws_mat.cell(row=row_num, column=5, value=float(item.get("price_unit_net", 0.0)))
+                price_cell.number_format = currency_format
+                price_cell.alignment = Alignment(horizontal="right")
+                price_cell.border = border
+                
+                ws_mat.cell(row=row_num, column=6, value=int(item.get("vat_rate", 0))).border = border
+                
+                net_cell = ws_mat.cell(row=row_num, column=7, value=float(item.get("total_net", 0.0)))
+                net_cell.number_format = currency_format
+                net_cell.alignment = Alignment(horizontal="right")
+                net_cell.fill = material_fill
+                net_cell.border = border
+                
+                vat_cell = ws_mat.cell(row=row_num, column=8, value=float(item.get("vat_value", 0.0)))
+                vat_cell.number_format = currency_format
+                vat_cell.alignment = Alignment(horizontal="right")
+                vat_cell.fill = material_fill
+                vat_cell.border = border
+                
+                gross_cell = ws_mat.cell(row=row_num, column=9, value=float(item.get("total_gross", 0.0)))
+                gross_cell.number_format = currency_format
+                gross_cell.alignment = Alignment(horizontal="right")
+                gross_cell.fill = material_fill
+                gross_cell.border = border
+            
+            # Adjust column widths
+            ws_mat.column_dimensions['A'].width = 6
+            ws_mat.column_dimensions['B'].width = 40
+            ws_mat.column_dimensions['C'].width = 12
+            ws_mat.column_dimensions['D'].width = 8
+            ws_mat.column_dimensions['E'].width = 14
+            ws_mat.column_dimensions['F'].width = 9
+            ws_mat.column_dimensions['G'].width = 16
+            ws_mat.column_dimensions['H'].width = 14
+            ws_mat.column_dimensions['I'].width = 16
+            
+            # Services sheet
+            ws_srv = wb.create_sheet("Usługi")
+            
+            # Headers
+            for col_num, header in enumerate(headers, 1):
+                cell = ws_srv.cell(row=1, column=col_num, value=header)
+                cell.font = Font(bold=True, color="FFFFFF", size=11)
+                cell.fill = header_fill
+                cell.alignment = header_alignment
+                cell.border = border
+            
+            # Data rows for services
+            for row_num, item in enumerate(services, 2):
+                ws_srv.cell(row=row_num, column=1, value=row_num - 1).border = border
+                ws_srv.cell(row=row_num, column=2, value=item.get("name", "")).border = border
+                
+                qty_cell = ws_srv.cell(row=row_num, column=3, value=float(item.get("quantity", 0.0)))
+                qty_cell.number_format = number_format
+                qty_cell.alignment = Alignment(horizontal="right")
+                qty_cell.border = border
+                
+                ws_srv.cell(row=row_num, column=4, value=item.get("unit", "")).border = border
+                
+                price_cell = ws_srv.cell(row=row_num, column=5, value=float(item.get("price_unit_net", 0.0)))
+                price_cell.number_format = currency_format
+                price_cell.alignment = Alignment(horizontal="right")
+                price_cell.border = border
+                
+                ws_srv.cell(row=row_num, column=6, value=int(item.get("vat_rate", 0))).border = border
+                
+                net_cell = ws_srv.cell(row=row_num, column=7, value=float(item.get("total_net", 0.0)))
+                net_cell.number_format = currency_format
+                net_cell.alignment = Alignment(horizontal="right")
+                net_cell.fill = service_fill
+                net_cell.border = border
+                
+                vat_cell = ws_srv.cell(row=row_num, column=8, value=float(item.get("vat_value", 0.0)))
+                vat_cell.number_format = currency_format
+                vat_cell.alignment = Alignment(horizontal="right")
+                vat_cell.fill = service_fill
+                vat_cell.border = border
+                
+                gross_cell = ws_srv.cell(row=row_num, column=9, value=float(item.get("total_gross", 0.0)))
+                gross_cell.number_format = currency_format
+                gross_cell.alignment = Alignment(horizontal="right")
+                gross_cell.fill = service_fill
+                gross_cell.border = border
+            
+            # Adjust column widths
+            ws_srv.column_dimensions['A'].width = 6
+            ws_srv.column_dimensions['B'].width = 40
+            ws_srv.column_dimensions['C'].width = 12
+            ws_srv.column_dimensions['D'].width = 8
+            ws_srv.column_dimensions['E'].width = 14
+            ws_srv.column_dimensions['F'].width = 9
+            ws_srv.column_dimensions['G'].width = 16
+            ws_srv.column_dimensions['H'].width = 14
+            ws_srv.column_dimensions['I'].width = 16
+            
+            # Summary sheet
+            ws_sum = wb.create_sheet("Podsumowanie")
+            
+            row = 1
+            # Client info
+            client_name = self.client_cb.get() if hasattr(self, "client_cb") else ""
+            if client_name:
+                ws_sum.cell(row=row, column=1, value="Klient:").font = Font(bold=True)
+                ws_sum.cell(row=row, column=2, value=client_name)
+                row += 1
+            
+            # Invoice info
+            ws_sum.cell(row=row, column=1, value="Nr kosztorysu:").font = Font(bold=True)
+            ws_sum.cell(row=row, column=2, value=self.invoice_number.get())
+            row += 1
+            
+            ws_sum.cell(row=row, column=1, value="Data:").font = Font(bold=True)
+            ws_sum.cell(row=row, column=2, value=self.invoice_date.get())
+            row += 2
+            
+            # Summary by VAT
+            ws_sum.cell(row=row, column=1, value="Podsumowanie wg VAT").font = Font(bold=True, size=12)
+            row += 1
+            
+            for vat_rate, vat_data in sorted(totals["by_vat"].items()):
+                ws_sum.cell(row=row, column=1, value=f"VAT {vat_rate}%:")
+                ws_sum.cell(row=row, column=2, value=f"Netto: {vat_data['net']:.2f} zł")
+                ws_sum.cell(row=row, column=3, value=f"VAT: {vat_data['vat']:.2f} zł")
+                ws_sum.cell(row=row, column=4, value=f"Brutto: {vat_data['gross']:.2f} zł")
+                row += 1
+            
+            row += 1
+            
+            # Summary by category
+            ws_sum.cell(row=row, column=1, value="Podsumowanie wg kategorii").font = Font(bold=True, size=12)
+            row += 1
+            
+            for cat, cat_data in totals["by_category"].items():
+                cat_name = "Materiały" if cat == "material" else "Usługi"
+                ws_sum.cell(row=row, column=1, value=f"{cat_name}:")
+                ws_sum.cell(row=row, column=2, value=f"Netto: {cat_data['net']:.2f} zł")
+                ws_sum.cell(row=row, column=3, value=f"Brutto: {cat_data['gross']:.2f} zł")
+                row += 1
+            
+            row += 1
+            
+            # Transport
+            trans = totals["transport"]
+            ws_sum.cell(row=row, column=1, value=f"Transport ({trans['percent']}%):").font = Font(bold=True)
+            ws_sum.cell(row=row, column=2, value=f"Netto: {trans['net']:.2f} zł")
+            ws_sum.cell(row=row, column=3, value=f"VAT: {trans['vat']:.2f} zł")
+            ws_sum.cell(row=row, column=4, value=f"Brutto: {trans['gross']:.2f} zł")
+            row += 2
+            
+            # Grand total
+            summ = totals["summary"]
+            ws_sum.cell(row=row, column=1, value="SUMA KOŃCOWA:").font = Font(bold=True, size=14)
+            ws_sum.cell(row=row, column=2, value=f"Netto: {summ['net']:.2f} zł").font = Font(bold=True)
+            ws_sum.cell(row=row, column=3, value=f"VAT: {summ['vat']:.2f} zł").font = Font(bold=True)
+            ws_sum.cell(row=row, column=4, value=f"Brutto: {summ['gross']:.2f} zł").font = Font(bold=True, size=14)
+            
+            # Adjust column widths
+            ws_sum.column_dimensions['A'].width = 25
+            ws_sum.column_dimensions['B'].width = 20
+            ws_sum.column_dimensions['C'].width = 20
+            ws_sum.column_dimensions['D'].width = 20
+            
+            # Save workbook
+            wb.save(path)
+            messagebox.showinfo("Eksport Excel", f"Zapisano Excel: {path}")
+            
+        except Exception as e:
+            messagebox.showerror("Błąd", f"Nie udało się zapisać Excel:\n{e}")
 
     # export PDF (kept from previous working implementation)
     def export_cost_pdf(self):
