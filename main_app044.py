@@ -498,7 +498,7 @@ class RoofCalculatorApp:
                             fg=COLORS['bg_white'], bg=COLORS['primary'])
         title_lbl.pack(side='left')
         
-        subtitle = tk.Label(left, text="v4.6 - Kosztorys Ofertowy",
+        subtitle = tk.Label(left, text="v5.0 - Kosztorys Ofertowy",
                            font=('Segoe UI', 10),
                            fg=COLORS['border'], bg=COLORS['primary'])
         subtitle.pack(side='left', padx=15)
