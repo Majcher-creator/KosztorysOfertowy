@@ -243,6 +243,130 @@ class MaterialEditDialog(simpledialog.Dialog):
     def apply(self):
         self.result = {"name": self.e_name.get().strip(), "unit": self.e_unit.get().strip(), "price_unit_net": float(self.e_price.get().replace(",",".") or 0.0), "vat_rate": int(self.vat_cb.get() or 23), "category": self.cat_cb.get() or "material"}
 
+class CompanyEditDialog(simpledialog.Dialog):
+    def __init__(self,parent,title,profile=None):
+        self.profile = profile or {}
+        super().__init__(parent,title)
+    def body(self,master):
+        ttk.Label(master, text="Nazwa profilu:").grid(row=0,column=0,sticky="w")
+        self.e_profile_name = ttk.Entry(master, width=60); self.e_profile_name.grid(row=0,column=1,pady=2)
+        ttk.Label(master, text="Nazwa firmy:").grid(row=1,column=0,sticky="w")
+        self.e_company_name = ttk.Entry(master, width=60); self.e_company_name.grid(row=1,column=1,pady=2)
+        ttk.Label(master, text="Adres:").grid(row=2,column=0,sticky="w")
+        self.e_address = ttk.Entry(master, width=60); self.e_address.grid(row=2,column=1,pady=2)
+        ttk.Label(master, text="NIP:").grid(row=3,column=0,sticky="w")
+        self.e_nip = ttk.Entry(master, width=60); self.e_nip.grid(row=3,column=1,pady=2)
+        ttk.Label(master, text="Telefon:").grid(row=4,column=0,sticky="w")
+        self.e_phone = ttk.Entry(master, width=60); self.e_phone.grid(row=4,column=1,pady=2)
+        ttk.Label(master, text="E-mail:").grid(row=5,column=0,sticky="w")
+        self.e_email = ttk.Entry(master, width=60); self.e_email.grid(row=5,column=1,pady=2)
+        ttk.Label(master, text="Nr konta:").grid(row=6,column=0,sticky="w")
+        self.e_account = ttk.Entry(master, width=60); self.e_account.grid(row=6,column=1,pady=2)
+        if self.profile:
+            self.e_profile_name.insert(0,self.profile.get("profile_name",""))
+            self.e_company_name.insert(0,self.profile.get("company_name",""))
+            self.e_address.insert(0,self.profile.get("company_address",""))
+            self.e_nip.insert(0,self.profile.get("company_nip",""))
+            self.e_phone.insert(0,self.profile.get("company_phone",""))
+            self.e_email.insert(0,self.profile.get("company_email",""))
+            self.e_account.insert(0,self.profile.get("company_account",""))
+        return self.e_profile_name
+    def apply(self):
+        self.result = {
+            "profile_name": self.e_profile_name.get().strip(),
+            "company_name": self.e_company_name.get().strip(),
+            "company_address": self.e_address.get().strip(),
+            "company_nip": self.e_nip.get().strip(),
+            "company_phone": self.e_phone.get().strip(),
+            "company_email": self.e_email.get().strip(),
+            "company_account": self.e_account.get().strip(),
+            "logo": self.profile.get("logo","")
+        }
+
+class CompanyProfilesDialog(tk.Toplevel):
+    def __init__(self, parent, profiles_path):
+        super().__init__(parent)
+        self.title("Profile firmy")
+        self.geometry("700x500")
+        self.profiles_path = profiles_path
+        self.selected_profile = None
+        self.profiles = self._load_profiles()
+        
+        # List of profiles
+        list_frame = ttk.Frame(self)
+        list_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        self.listbox = tk.Listbox(list_frame)
+        self.listbox.pack(side="left", fill="both", expand=True)
+        scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=self.listbox.yview)
+        scrollbar.pack(side="right", fill="y")
+        self.listbox.config(yscrollcommand=scrollbar.set)
+        
+        # Buttons
+        btn_frame = ttk.Frame(self)
+        btn_frame.pack(fill="x", padx=10, pady=10)
+        ttk.Button(btn_frame, text="Nowy profil", command=self._add_profile).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Edytuj", command=self._edit_profile).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Usuń", command=self._delete_profile).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Wczytaj i zamknij", command=self._select_and_close).pack(side="right", padx=4)
+        
+        self._populate_list()
+        
+    def _load_profiles(self):
+        if os.path.exists(self.profiles_path):
+            try:
+                with open(self.profiles_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                return []
+        return []
+    
+    def _save_profiles(self):
+        try:
+            with open(self.profiles_path, "w", encoding="utf-8") as f:
+                json.dump(self.profiles, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            messagebox.showerror("Błąd", f"Nie udało się zapisać profili:\n{e}")
+    
+    def _populate_list(self):
+        self.listbox.delete(0, tk.END)
+        for p in self.profiles:
+            self.listbox.insert(tk.END, p.get("profile_name", ""))
+    
+    def _add_profile(self):
+        dlg = CompanyEditDialog(self, "Nowy profil")
+        if getattr(dlg, "result", None):
+            self.profiles.append(dlg.result)
+            self._save_profiles()
+            self._populate_list()
+    
+    def _edit_profile(self):
+        sel = self.listbox.curselection()
+        if not sel:
+            messagebox.showwarning("Brak zaznaczenia", "Wybierz profil do edycji")
+            return
+        idx = sel[0]
+        dlg = CompanyEditDialog(self, "Edytuj profil", self.profiles[idx])
+        if getattr(dlg, "result", None):
+            self.profiles[idx] = dlg.result
+            self._save_profiles()
+            self._populate_list()
+    
+    def _delete_profile(self):
+        sel = self.listbox.curselection()
+        if not sel:
+            return
+        if messagebox.askyesno("Usuń", "Usunąć wybrany profil?"):
+            del self.profiles[sel[0]]
+            self._save_profiles()
+            self._populate_list()
+    
+    def _select_and_close(self):
+        sel = self.listbox.curselection()
+        if sel:
+            self.selected_profile = self.profiles[sel[0]]
+        self.destroy()
+
 # ---------------- Main App ----------------
 class RoofCalculatorApp:
     def __init__(self, master):
@@ -824,9 +948,8 @@ Szczegóły zaznaczonych obróbek:
         else:
             messagebox.showwarning("Brak danych", "Brak zaznaczonych obróbek do dodania.")
 
-    # cost tab UI (kept similar to previous working version)
+    # cost tab UI with keyboard shortcuts and enhanced UI
     def create_cost_tab(self):
-        # Implementation mirrors main_app043/main_app044 UI layout
         self.cost_tab = ttk.Frame(self.notebook); self.notebook.add(self.cost_tab, text="Kosztorys/Oferta")
         left = ttk.Frame(self.cost_tab); left.pack(side="left", fill="both", expand=True, padx=8, pady=8)
         right_container = ttk.Frame(self.cost_tab, width=420); right_container.pack(side="right", fill="y", padx=8, pady=8)
@@ -841,11 +964,15 @@ Szczegóły zaznaczonych obróbek:
         ttk.Label(inv_frame, text="Nazwa kosztorysu:").grid(row=1,column=0,sticky="e"); ttk.Entry(inv_frame,width=30,textvariable=self.quote_name).grid(row=1,column=1,columnspan=4,padx=4)
         ttk.Label(inv_frame, text="Data:").grid(row=0,column=5,sticky="e"); ttk.Entry(inv_frame,width=12,textvariable=self.invoice_date).grid(row=0,column=6,padx=4)
 
-        # toolbar
+        # main toolbar (moved buttons here)
         toolbar = ttk.Frame(left); toolbar.pack(fill="x", pady=(0,6))
         ttk.Button(toolbar, text="Oblicz kosztorys", command=self.calculate_cost_estimation).pack(side="left", padx=4)
         ttk.Button(toolbar, text="Eksportuj CSV", command=self.export_cost_csv).pack(side="left", padx=4)
         ttk.Button(toolbar, text="Eksportuj PDF", command=self.export_cost_pdf).pack(side="left", padx=4)
+        ttk.Separator(toolbar, orient="vertical").pack(side="left", fill="y", padx=8)
+        ttk.Button(toolbar, text="Edytuj", command=lambda: self._edit_from_tree_smart()).pack(side="left", padx=4)
+        ttk.Button(toolbar, text="Usuń", command=lambda: self._delete_from_tree_smart()).pack(side="left", padx=4)
+        ttk.Button(toolbar, text="Duplikuj", command=lambda: self._duplicate_item_smart()).pack(side="left", padx=4)
         ttk.Button(toolbar, text="Wstaw z bazy", command=self.manage_materials_db).pack(side="right", padx=4)
         ttk.Button(toolbar, text="Klienci", command=self.manage_clients).pack(side="right", padx=4)
 
@@ -866,31 +993,25 @@ Szczegóły zaznaczonych obróbek:
         mat_tree_container = ttk.Frame(mat_frame); mat_tree_container.pack(fill="both", expand=True, padx=6, pady=6)
         mat_tree_container.config(height=260)
         mat_cols = ("name","qty","unit","price_net","net")
-        self.mat_tree = ttk.Treeview(mat_tree_container, columns=mat_cols, show="headings", selectmode="browse")
+        self.mat_tree = ttk.Treeview(mat_tree_container, columns=mat_cols, show="headings", selectmode="extended")
         for c,h in zip(mat_cols,("Nazwa","Ilość","JM","Cena netto","Wartość netto")):
             self.mat_tree.heading(c, text=h); self.mat_tree.column(c, width=300 if c=="name" else 80, anchor="w" if c=="name" else "e")
         mat_vscroll = ttk.Scrollbar(mat_tree_container, orient="vertical", command=self.mat_tree.yview)
         self.mat_tree.configure(yscrollcommand=mat_vscroll.set)
         self.mat_tree.pack(side="left", fill="both", expand=True)
         mat_vscroll.pack(side="right", fill="y")
-        mat_btnf = ttk.Frame(mat_frame); mat_btnf.pack(fill="x", padx=6, pady=4)
-        ttk.Button(mat_btnf, text="Edytuj zaznaczoną", command=lambda: self._edit_from_tree("material")).pack(side="left", padx=4)
-        ttk.Button(mat_btnf, text="Usuń zaznaczoną", command=lambda: self._delete_from_tree("material")).pack(side="left", padx=4)
 
         # services tree with scrollbar
         srv_tree_container = ttk.Frame(srv_frame); srv_tree_container.pack(fill="both", expand=True, padx=6, pady=6)
         srv_tree_container.config(height=260)
         srv_cols = ("name","qty","unit","price_net","net")
-        self.srv_tree = ttk.Treeview(srv_tree_container, columns=srv_cols, show="headings", selectmode="browse")
+        self.srv_tree = ttk.Treeview(srv_tree_container, columns=srv_cols, show="headings", selectmode="extended")
         for c,h in zip(srv_cols,("Nazwa","Ilość","JM","Cena netto","Wartość netto")):
             self.srv_tree.heading(c, text=h); self.srv_tree.column(c, width=300 if c=="name" else 80, anchor="w" if c=="name" else "e")
         srv_vscroll = ttk.Scrollbar(srv_tree_container, orient="vertical", command=self.srv_tree.yview)
         self.srv_tree.configure(yscrollcommand=srv_vscroll.set)
         self.srv_tree.pack(side="left", fill="both", expand=True)
         srv_vscroll.pack(side="right", fill="y")
-        srv_btnf = ttk.Frame(srv_frame); srv_btnf.pack(fill="x", padx=6, pady=4)
-        ttk.Button(srv_btnf, text="Edytuj zaznaczoną", command=lambda: self._edit_from_tree("service")).pack(side="left", padx=4)
-        ttk.Button(srv_btnf, text="Usuń zaznaczoną", command=lambda: self._delete_from_tree("service")).pack(side="left", padx=4)
 
         # right panel (add item / client / transport / summary)
         right = ttk.Frame(right_container); right.pack(fill="both", expand=True, padx=4, pady=4)
@@ -918,9 +1039,24 @@ Szczegóły zaznaczonych obróbek:
         ttk.Label(summary_frame, text="Komentarz (umieszczony w PDF):").pack(anchor="w", padx=4, pady=(6,0))
         self.comment_text = tk.Text(summary_frame, height=6); self.comment_text.pack(fill="both", expand=False, padx=4, pady=(0,6))
 
-        # double-click edit bindings
+        # keyboard shortcuts for both trees
+        self.mat_tree.bind("<Delete>", lambda e: self._delete_from_tree_smart())
+        self.mat_tree.bind("<Return>", lambda e: self._edit_from_tree_smart())
+        self.mat_tree.bind("<plus>", lambda e: self._adjust_quantity_smart(1))
+        self.mat_tree.bind("<minus>", lambda e: self._adjust_quantity_smart(-1))
+        self.mat_tree.bind("<Control-d>", lambda e: self._duplicate_item_smart())
         self.mat_tree.bind("<Double-1>", lambda e: self._edit_from_tree("material"))
+        
+        self.srv_tree.bind("<Delete>", lambda e: self._delete_from_tree_smart())
+        self.srv_tree.bind("<Return>", lambda e: self._edit_from_tree_smart())
+        self.srv_tree.bind("<plus>", lambda e: self._adjust_quantity_smart(1))
+        self.srv_tree.bind("<minus>", lambda e: self._adjust_quantity_smart(-1))
+        self.srv_tree.bind("<Control-d>", lambda e: self._duplicate_item_smart())
         self.srv_tree.bind("<Double-1>", lambda e: self._edit_from_tree("service"))
+        
+        # context menus for both trees
+        self.mat_tree.bind("<Button-3>", lambda e: self._show_context_menu(e, "material"))
+        self.srv_tree.bind("<Button-3>", lambda e: self._show_context_menu(e, "service"))
 
         self._refresh_cost_ui()
 
@@ -975,6 +1111,129 @@ Szczegóły zaznaczonych obróbek:
         idx = int(sel[0])
         if not messagebox.askyesno("Usuń","Usunąć pozycję?"): return
         del self.cost_items[idx]; self._refresh_cost_ui()
+    
+    # Smart methods that work with focused tree
+    def _get_focused_tree(self):
+        """Return the currently focused tree (mat_tree or srv_tree) or None"""
+        focus = self.master.focus_get()
+        if focus == self.mat_tree:
+            return self.mat_tree, "material"
+        elif focus == self.srv_tree:
+            return self.srv_tree, "service"
+        return None, None
+    
+    def _edit_from_tree_smart(self):
+        """Edit from whichever tree has focus"""
+        tree, kind = self._get_focused_tree()
+        if tree:
+            self._edit_from_tree(kind)
+    
+    def _delete_from_tree_smart(self):
+        """Delete from whichever tree has focus, supports multiple selection"""
+        tree, kind = self._get_focused_tree()
+        if not tree:
+            return
+        sel = tree.selection()
+        if not sel:
+            messagebox.showwarning("Brak zaznaczenia", "Wybierz pozycję")
+            return
+        
+        if len(sel) == 1:
+            msg = "Usunąć pozycję?"
+        else:
+            msg = f"Usunąć {len(sel)} pozycji?"
+        
+        if not messagebox.askyesno("Usuń", msg):
+            return
+        
+        # Get indices and sort in reverse order to delete from end
+        indices = sorted([int(iid) for iid in sel], reverse=True)
+        for idx in indices:
+            if 0 <= idx < len(self.cost_items):
+                del self.cost_items[idx]
+        
+        self._refresh_cost_ui()
+    
+    def _duplicate_item_smart(self):
+        """Duplicate selected item from whichever tree has focus"""
+        tree, kind = self._get_focused_tree()
+        if not tree:
+            return
+        sel = tree.selection()
+        if not sel:
+            messagebox.showwarning("Brak zaznaczenia", "Wybierz pozycję do duplikacji")
+            return
+        
+        idx = int(sel[0])
+        if 0 <= idx < len(self.cost_items):
+            item_copy = dict(self.cost_items[idx])
+            item_copy["name"] = item_copy.get("name", "") + " (kopia)"
+            self.cost_items.insert(idx + 1, item_copy)
+            self._refresh_cost_ui()
+    
+    def _adjust_quantity_smart(self, delta: float):
+        """Adjust quantity of selected item by delta"""
+        tree, kind = self._get_focused_tree()
+        if not tree:
+            return
+        sel = tree.selection()
+        if not sel:
+            return
+        
+        idx = int(sel[0])
+        if 0 <= idx < len(self.cost_items):
+            item = self.cost_items[idx]
+            current_qty = float(item.get("quantity", 0.0))
+            new_qty = max(0.0, current_qty + delta)  # Don't go below 0
+            item["quantity"] = new_qty
+            self._refresh_cost_ui()
+    
+    def _show_context_menu(self, event, kind: str):
+        """Show context menu on right-click"""
+        tree = self.mat_tree if kind == "material" else self.srv_tree
+        
+        # Select the item under cursor if not already selected
+        item_id = tree.identify_row(event.y)
+        if item_id and item_id not in tree.selection():
+            tree.selection_set(item_id)
+            tree.focus(item_id)
+        
+        if not tree.selection():
+            return
+        
+        menu = tk.Menu(self.master, tearoff=0)
+        menu.add_command(label="Edytuj", command=lambda: self._edit_from_tree(kind))
+        menu.add_command(label="Usuń", command=lambda: self._delete_from_tree_smart())
+        menu.add_command(label="Duplikuj", command=lambda: self._duplicate_item_smart())
+        menu.add_separator()
+        menu.add_command(label="Zwiększ ilość (+1)", command=lambda: self._adjust_quantity_smart(1))
+        menu.add_command(label="Zmniejsz ilość (-1)", command=lambda: self._adjust_quantity_smart(-1))
+        menu.add_separator()
+        
+        # Add move to other category option
+        if kind == "material":
+            menu.add_command(label="Przenieś do usług", command=lambda: self._move_to_category("service"))
+        else:
+            menu.add_command(label="Przenieś do materiałów", command=lambda: self._move_to_category("material"))
+        
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+    
+    def _move_to_category(self, new_category: str):
+        """Move selected item to a different category"""
+        tree, old_kind = self._get_focused_tree()
+        if not tree:
+            return
+        sel = tree.selection()
+        if not sel:
+            return
+        
+        idx = int(sel[0])
+        if 0 <= idx < len(self.cost_items):
+            self.cost_items[idx]["category"] = new_category
+            self._refresh_cost_ui()
 
     # calculation / summary (fix for missing method)
     def calculate_cost_estimation(self):
