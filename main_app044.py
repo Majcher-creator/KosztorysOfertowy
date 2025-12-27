@@ -18,11 +18,35 @@ from tkinter import ttk, messagebox, simpledialog, filedialog
 import json, os, csv, platform, subprocess, re
 from datetime import datetime
 
-# Import calculation modules
-from gutter_calculations import calculate_guttering
-from chimney_calculations import calculate_chimney_flashings, calculate_chimney_insulation
-from flashing_calculations import calculate_flashings_total
-from measurement_tab import MeasurementTab
+# Import calculation modules (required for full functionality)
+try:
+    from gutter_calculations import calculate_guttering
+    GUTTER_AVAILABLE = True
+except ImportError:
+    GUTTER_AVAILABLE = False
+    calculate_guttering = None
+
+try:
+    from chimney_calculations import calculate_chimney_flashings, calculate_chimney_insulation
+    CHIMNEY_AVAILABLE = True
+except ImportError:
+    CHIMNEY_AVAILABLE = False
+    calculate_chimney_flashings = None
+    calculate_chimney_insulation = None
+
+try:
+    from flashing_calculations import calculate_flashings_total
+    FLASHING_AVAILABLE = True
+except ImportError:
+    FLASHING_AVAILABLE = False
+    calculate_flashings_total = None
+
+try:
+    from measurement_tab import MeasurementTab
+    MEASUREMENT_AVAILABLE = True
+except ImportError:
+    MEASUREMENT_AVAILABLE = False
+    MeasurementTab = None
 
 # Pillow for logo preview (optional)
 try:
@@ -446,13 +470,19 @@ class RoofCalculatorApp:
     # Create all tabs
     def create_all_tabs(self):
         self.create_cost_tab()
-        self.create_measurement_tab()
-        self.create_gutter_tab()
-        self.create_chimney_tab()
-        self.create_flashing_tab()
+        if MEASUREMENT_AVAILABLE:
+            self.create_measurement_tab()
+        if GUTTER_AVAILABLE:
+            self.create_gutter_tab()
+        if CHIMNEY_AVAILABLE:
+            self.create_chimney_tab()
+        if FLASHING_AVAILABLE:
+            self.create_flashing_tab()
     
     # measurement tab (Pomiar Dachu)
     def create_measurement_tab(self):
+        if not MEASUREMENT_AVAILABLE:
+            return
         self.measurement_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.measurement_frame, text="Pomiar Dachu")
         self.measurement_tab_module = MeasurementTab(self, self.measurement_frame)
@@ -472,6 +502,8 @@ class RoofCalculatorApp:
     
     # gutter tab (Orynnowanie)
     def create_gutter_tab(self):
+        if not GUTTER_AVAILABLE:
+            return
         self.gutter_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.gutter_frame, text="Orynnowanie")
         
@@ -567,6 +599,8 @@ Zaślepki: {results['num_end_caps']} szt.
     
     # chimney tab (Kominy)
     def create_chimney_tab(self):
+        if not CHIMNEY_AVAILABLE:
+            return
         self.chimney_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.chimney_frame, text="Kominy")
         
@@ -688,6 +722,8 @@ Powierzchnia siatki z klejem: {results.get('total_mesh_surface_m2', 0):.2f} m²
     
     # flashing tab (Obróbki)
     def create_flashing_tab(self):
+        if not FLASHING_AVAILABLE:
+            return
         self.flashing_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.flashing_frame, text="Obróbki")
         
