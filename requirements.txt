@@ -1,0 +1,11 @@
+# Kalkulator Dachów v5.0 - Dependencies
+# Install with: pip install -r requirements.txt
+
+# PDF generation
+reportlab>=3.6.0
+
+# Image handling (logos)
+Pillow>=9.0.0
+
+# Excel export
+openpyxl>=3.0.0

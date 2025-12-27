@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-# main_app045.py
-# Kalkulator Dachów - v4.5
-# Zmiany:
-# - Przechowywanie ostatniego numeru kosztorysu w settings.json (klucz last_invoice_seq i last_invoice_year).
-#   Dzięki temu numer jest generowany szybko i niezawodnie bez parsowania katalogu.
-# - Poprawka błędu AttributeError: missing calculate_cost_estimation (metoda dodana).
-# - Pełny, zaktualizowany plik aplikacji z wszystkimi funkcjami poprzednich wersji.
+# main_app046.py
+# Kalkulator Dachów - v5.0
+# Zmiany w v5.0:
+# - Skróty klawiaturowe: Delete (usuń), Enter (edytuj), +/- (zmień ilość), Ctrl+D (duplikuj)
+# - Menu kontekstowe (prawy przycisk myszy) na pozycjach kosztorysu
+# - Eksport do Excel (.xlsx) z profesjonalnym formatowaniem
+# - Menedżer szablonów kosztorysów
+# - Walidacja kosztorysu z ostrzeżeniami o brakujących pozycjach
+# - Przechowywanie ostatniego numeru kosztorysu w settings.json
 #
-# Wymagane (opcjonalne do PDF/logo): pip install reportlab pillow
+# Wymagane: pip install reportlab pillow openpyxl
 #
-# Uruchom: python3.12 main_app045.py
+# Uruchom: python3.12 main_app046.py
 
 from typing import List, Dict, Any, Optional
 import tkinter as tk
@@ -36,6 +38,15 @@ try:
     REPORTLAB_AVAILABLE = True
 except Exception:
     REPORTLAB_AVAILABLE = False
+
+# openpyxl for Excel export
+try:
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+    from openpyxl.utils import get_column_letter
+    OPENPYXL_AVAILABLE = True
+except Exception:
+    OPENPYXL_AVAILABLE = False
 
 # ---------------- Helpers ----------------
 def fmt_money_plain(v: float) -> str:
@@ -216,7 +227,7 @@ class MaterialEditDialog(simpledialog.Dialog):
 class RoofCalculatorApp:
     def __init__(self, master):
         self.master = master
-        master.title("Kalkulator Dachów - v4.5")
+        master.title("Kalkulator Dachów - v5.0")
         master.geometry("1280x940")
         # data stores
         self.clients: List[Dict[str,Any]] = []
@@ -458,8 +469,11 @@ class RoofCalculatorApp:
         ttk.Button(toolbar, text="Oblicz kosztorys", command=self.calculate_cost_estimation).pack(side="left", padx=4)
         ttk.Button(toolbar, text="Eksportuj CSV", command=self.export_cost_csv).pack(side="left", padx=4)
         ttk.Button(toolbar, text="Eksportuj PDF", command=self.export_cost_pdf).pack(side="left", padx=4)
+        ttk.Button(toolbar, text="📊 Eksportuj Excel", command=self.export_cost_excel).pack(side="left", padx=4)
+        ttk.Button(toolbar, text="✓ Sprawdź", command=self.validate_cost_estimate).pack(side="left", padx=4)
         ttk.Button(toolbar, text="Wstaw z bazy", command=self.manage_materials_db).pack(side="right", padx=4)
         ttk.Button(toolbar, text="Klienci", command=self.manage_clients).pack(side="right", padx=4)
+        ttk.Button(toolbar, text="📋 Szablony", command=self.manage_templates).pack(side="right", padx=4)
 
         # quick sums
         sums_frame = ttk.Frame(left); sums_frame.pack(fill="x", pady=(0,6))
@@ -533,6 +547,19 @@ class RoofCalculatorApp:
         # double-click edit bindings
         self.mat_tree.bind("<Double-1>", lambda e: self._edit_from_tree("material"))
         self.srv_tree.bind("<Double-1>", lambda e: self._edit_from_tree("service"))
+
+        # Keyboard shortcuts for both trees
+        for tree, kind in [(self.mat_tree, "material"), (self.srv_tree, "service")]:
+            tree.bind("<Delete>", lambda e, k=kind: self._delete_from_tree(k))
+            tree.bind("<Return>", lambda e, k=kind: self._edit_from_tree(k))
+            tree.bind("<plus>", lambda e, k=kind: self._change_quantity(k, 1))
+            tree.bind("<minus>", lambda e, k=kind: self._change_quantity(k, -1))
+            tree.bind("<KP_Add>", lambda e, k=kind: self._change_quantity(k, 1))
+            tree.bind("<KP_Subtract>", lambda e, k=kind: self._change_quantity(k, -1))
+            tree.bind("<Control-d>", lambda e, k=kind: self._duplicate_item(k))
+            tree.bind("<Control-D>", lambda e, k=kind: self._duplicate_item(k))
+            # Context menu (right-click)
+            tree.bind("<Button-3>", lambda e, k=kind: self._show_context_menu(e, k))
 
         self._refresh_cost_ui()
 
@@ -1053,6 +1080,381 @@ class RoofCalculatorApp:
             pass
         self._refresh_cost_ui()
         messagebox.showinfo("Wczytano", f"Wczytano kosztorys: {path}")
+
+    # New methods for v5.0
+    def _change_quantity(self, kind: str, delta: int):
+        """Change quantity of selected item by delta (+1 or -1)"""
+        tree = self.mat_tree if kind == "material" else self.srv_tree
+        sel = tree.selection()
+        if not sel:
+            return
+        idx = int(sel[0])
+        if 0 <= idx < len(self.cost_items):
+            new_qty = float(self.cost_items[idx].get("quantity", 0.0)) + delta
+            if new_qty < 0:
+                new_qty = 0
+            self.cost_items[idx]["quantity"] = new_qty
+            self._refresh_cost_ui()
+
+    def _duplicate_item(self, kind: str):
+        """Duplicate selected item"""
+        tree = self.mat_tree if kind == "material" else self.srv_tree
+        sel = tree.selection()
+        if not sel:
+            messagebox.showwarning("Brak zaznaczenia", "Wybierz pozycję do duplikacji")
+            return
+        idx = int(sel[0])
+        if 0 <= idx < len(self.cost_items):
+            item_copy = dict(self.cost_items[idx])
+            self.cost_items.append(item_copy)
+            self._refresh_cost_ui()
+
+    def _show_context_menu(self, event, kind: str):
+        """Show context menu for right-click on tree item"""
+        tree = self.mat_tree if kind == "material" else self.srv_tree
+        # Select the item under cursor
+        item = tree.identify_row(event.y)
+        if item:
+            tree.selection_set(item)
+            tree.focus(item)
+        
+        menu = tk.Menu(self.master, tearoff=0)
+        menu.add_command(label="✏️ Edytuj", command=lambda: self._edit_from_tree(kind))
+        menu.add_command(label="🗑️ Usuń", command=lambda: self._delete_from_tree(kind))
+        menu.add_command(label="📋 Duplikuj", command=lambda: self._duplicate_item(kind))
+        menu.add_separator()
+        menu.add_command(label="➕ Zwiększ ilość (+1)", command=lambda: self._change_quantity(kind, 1))
+        menu.add_command(label="➖ Zmniejsz ilość (-1)", command=lambda: self._change_quantity(kind, -1))
+        menu.add_separator()
+        other_kind = "service" if kind == "material" else "material"
+        label = "🔧 Przenieś do usług" if kind == "material" else "🧱 Przenieś do materiałów"
+        menu.add_command(label=label, command=lambda: self._move_item_to_category(kind, other_kind))
+        
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+
+    def _move_item_to_category(self, from_kind: str, to_kind: str):
+        """Move item between materials and services"""
+        tree = self.mat_tree if from_kind == "material" else self.srv_tree
+        sel = tree.selection()
+        if not sel:
+            return
+        idx = int(sel[0])
+        if 0 <= idx < len(self.cost_items):
+            self.cost_items[idx]["category"] = to_kind
+            self._refresh_cost_ui()
+
+    def export_cost_excel(self):
+        """Export cost estimate to Excel (.xlsx) format"""
+        if not OPENPYXL_AVAILABLE:
+            messagebox.showerror("Brak biblioteki", "Zainstaluj openpyxl: pip install openpyxl")
+            return
+        if not self.cost_items:
+            messagebox.showwarning("Brak pozycji", "Brak pozycji do eksportu.")
+            return
+        
+        path = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel", "*.xlsx"), ("All", "*.*")])
+        if not path:
+            return
+        
+        try:
+            wb = Workbook()
+            
+            # Materials sheet
+            ws_mat = wb.active
+            ws_mat.title = "Materiały"
+            materials = [it for it in self.cost_items if it.get("category", "material") == "material"]
+            self._fill_excel_sheet(ws_mat, materials, "Materiały")
+            
+            # Services sheet
+            ws_srv = wb.create_sheet("Usługi")
+            services = [it for it in self.cost_items if it.get("category", "material") == "service"]
+            self._fill_excel_sheet(ws_srv, services, "Usługi")
+            
+            # Summary sheet
+            ws_sum = wb.create_sheet("Podsumowanie")
+            totals = compute_totals_local(self.cost_items, float(self.transport_percent.get() or 0.0), int(self.transport_vat.get() or 23))
+            self._fill_excel_summary(ws_sum, totals)
+            
+            wb.save(path)
+            messagebox.showinfo("Eksport Excel", f"Zapisano Excel: {path}")
+        except Exception as e:
+            messagebox.showerror("Błąd", f"Nie udało się zapisać Excel:\n{e}")
+
+    def _fill_excel_sheet(self, ws, items, title):
+        """Fill Excel worksheet with items"""
+        # Styles
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        currency_format = '#,##0.00" zł"'
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
+        # Headers
+        headers = ["Lp", "Nazwa", "Ilość", "JM", "Cena netto", "Wartość netto"]
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center")
+            cell.border = thin_border
+        
+        # Data rows
+        total_net = 0.0
+        for row_num, it in enumerate(items, 2):
+            qty = float(it.get("quantity", 0.0))
+            price = float(it.get("price_unit_net", 0.0))
+            net = round(qty * price, 2)
+            total_net += net
+            
+            row_data = [
+                row_num - 1,
+                it.get("name", ""),
+                qty,
+                it.get("unit", ""),
+                price,
+                net
+            ]
+            for col, value in enumerate(row_data, 1):
+                cell = ws.cell(row=row_num, column=col, value=value)
+                cell.border = thin_border
+                if col in [5, 6]:  # Price columns
+                    cell.number_format = currency_format
+                    cell.alignment = Alignment(horizontal="right")
+                elif col == 3:  # Quantity
+                    cell.number_format = '0.000'
+                    cell.alignment = Alignment(horizontal="right")
+        
+        # Total row
+        total_row = len(items) + 2
+        ws.cell(row=total_row, column=1, value="")
+        total_cell = ws.cell(row=total_row, column=5, value="SUMA:")
+        total_cell.font = Font(bold=True)
+        total_cell.alignment = Alignment(horizontal="right")
+        sum_cell = ws.cell(row=total_row, column=6, value=total_net)
+        sum_cell.font = Font(bold=True)
+        sum_cell.number_format = currency_format
+        sum_cell.fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+        sum_cell.border = thin_border
+        
+        # Column widths
+        ws.column_dimensions['A'].width = 6
+        ws.column_dimensions['B'].width = 45
+        ws.column_dimensions['C'].width = 10
+        ws.column_dimensions['D'].width = 8
+        ws.column_dimensions['E'].width = 14
+        ws.column_dimensions['F'].width = 16
+
+    def _fill_excel_summary(self, ws, totals):
+        """Fill Excel summary sheet"""
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        currency_format = '#,##0.00" zł"'
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
+        # Title
+        ws.cell(row=1, column=1, value="PODSUMOWANIE KOSZTORYSU").font = Font(bold=True, size=14)
+        ws.merge_cells('A1:D1')
+        
+        # Headers
+        headers = ["Opis", "Netto", "VAT", "Brutto"]
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=3, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center")
+            cell.border = thin_border
+        
+        # By VAT rates
+        row = 4
+        for vat, s in sorted(totals["by_vat"].items()):
+            ws.cell(row=row, column=1, value=f"VAT {vat}%").border = thin_border
+            ws.cell(row=row, column=2, value=s.get("net", 0.0)).number_format = currency_format
+            ws.cell(row=row, column=2).border = thin_border
+            ws.cell(row=row, column=3, value=s.get("vat", 0.0)).number_format = currency_format
+            ws.cell(row=row, column=3).border = thin_border
+            ws.cell(row=row, column=4, value=s.get("gross", 0.0)).number_format = currency_format
+            ws.cell(row=row, column=4).border = thin_border
+            row += 1
+        
+        # Transport
+        t = totals["transport"]
+        ws.cell(row=row, column=1, value=f"Transport ({t['percent']}%)").border = thin_border
+        ws.cell(row=row, column=2, value=t.get("net", 0.0)).number_format = currency_format
+        ws.cell(row=row, column=2).border = thin_border
+        ws.cell(row=row, column=3, value=t.get("vat", 0.0)).number_format = currency_format
+        ws.cell(row=row, column=3).border = thin_border
+        ws.cell(row=row, column=4, value=t.get("gross", 0.0)).number_format = currency_format
+        ws.cell(row=row, column=4).border = thin_border
+        row += 1
+        
+        # Total row
+        s = totals["summary"]
+        total_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+        ws.cell(row=row, column=1, value="RAZEM").font = Font(bold=True)
+        ws.cell(row=row, column=1).fill = total_fill
+        ws.cell(row=row, column=1).border = thin_border
+        for col, val in [(2, s.get("net", 0.0)), (3, s.get("vat", 0.0)), (4, s.get("gross", 0.0))]:
+            cell = ws.cell(row=row, column=col, value=val)
+            cell.font = Font(bold=True)
+            cell.number_format = currency_format
+            cell.fill = total_fill
+            cell.border = thin_border
+        
+        # Column widths
+        ws.column_dimensions['A'].width = 25
+        ws.column_dimensions['B'].width = 16
+        ws.column_dimensions['C'].width = 16
+        ws.column_dimensions['D'].width = 16
+
+    def validate_cost_estimate(self):
+        """Validate cost estimate and show warnings for missing related items"""
+        warnings = []
+        item_names = [it.get("name", "").lower() for it in self.cost_items]
+        
+        # Check for related items
+        validations = [
+            (["rynna", "rynny"], ["hak", "haki"], "Dodano rynny - czy dodano haki rynnowe?"),
+            (["rura spustowa", "rury spustowe"], ["obejma", "obejmy"], "Dodano rury spustowe - czy dodano obejmy?"),
+            (["papa"], ["klej", "lepik"], "Dodano papę - czy dodano klej/lepik?"),
+            (["dachówka", "dachówki"], ["gąsior", "gąsiory", "kalenica"], "Dodano dachówkę - czy dodano gąsiory?"),
+            (["blacha"], ["wkręt", "śrub", "nit"], "Dodano blachę - czy dodano wkręty/śruby?"),
+        ]
+        
+        for triggers, required, message in validations:
+            has_trigger = any(any(t in name for t in triggers) for name in item_names)
+            has_required = any(any(r in name for r in required) for name in item_names)
+            if has_trigger and not has_required:
+                warnings.append(message)
+        
+        # Check for common missing items
+        common_missing = [
+            (["transport"], "Czy dodano koszt transportu?"),
+            (["rusztowanie"], "Czy potrzebne rusztowanie?"),
+            (["utylizacja", "wywóz", "gruz"], "Czy dodano koszt utylizacji odpadów?"),
+        ]
+        
+        for keywords, message in common_missing:
+            has_item = any(any(k in name for k in keywords) for name in item_names)
+            if not has_item and len(self.cost_items) > 3:  # Only warn for substantial estimates
+                warnings.append(message)
+        
+        # Display results
+        if warnings:
+            msg = "⚠️ Ostrzeżenia:\n\n" + "\n".join(f"• {w}" for w in warnings)
+            messagebox.showwarning("Walidacja kosztorysu", msg)
+        else:
+            messagebox.showinfo("Walidacja kosztorysu", "✓ Kosztorys wygląda poprawnie.\nBrak ostrzeżeń.")
+
+    def _templates_path(self):
+        """Get path to templates file"""
+        return self._local_db_path("templates.json")
+
+    def _load_templates(self) -> List[Dict[str, Any]]:
+        """Load templates from file"""
+        try:
+            path = self._templates_path()
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception:
+            pass
+        return []
+
+    def _save_templates(self, templates: List[Dict[str, Any]]):
+        """Save templates to file"""
+        try:
+            with open(self._templates_path(), "w", encoding="utf-8") as f:
+                json.dump(templates, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            messagebox.showerror("Błąd", f"Nie udało się zapisać szablonów:\n{e}")
+
+    def manage_templates(self):
+        """Open templates management dialog"""
+        w = tk.Toplevel(self.master)
+        w.title("Zarządzaj szablonami")
+        w.geometry("600x400")
+        
+        templates = self._load_templates()
+        
+        # Left panel - list of templates
+        left = ttk.Frame(w)
+        left.pack(side="left", fill="both", expand=True, padx=8, pady=8)
+        
+        ttk.Label(left, text="Dostępne szablony:", font=("Arial", 10, "bold")).pack(anchor="w")
+        
+        listbox = tk.Listbox(left, width=40)
+        listbox.pack(fill="both", expand=True, pady=4)
+        
+        def refresh_list():
+            listbox.delete(0, tk.END)
+            for t in templates:
+                listbox.insert(tk.END, f"{t.get('name', '?')} ({len(t.get('items', []))} pozycji)")
+        
+        refresh_list()
+        
+        # Right panel - buttons
+        right = ttk.Frame(w)
+        right.pack(side="right", fill="y", padx=8, pady=8)
+        
+        def save_as_template():
+            if not self.cost_items:
+                messagebox.showwarning("Brak pozycji", "Dodaj pozycje do kosztorysu przed zapisaniem szablonu")
+                return
+            name = simpledialog.askstring("Nazwa szablonu", "Podaj nazwę szablonu:", parent=w)
+            if not name:
+                return
+            templates.append({
+                "name": name,
+                "items": [dict(it) for it in self.cost_items],
+                "created_at": datetime.now().isoformat()
+            })
+            self._save_templates(templates)
+            refresh_list()
+            messagebox.showinfo("Zapisano", f"Szablon '{name}' został zapisany")
+        
+        def load_template():
+            sel = listbox.curselection()
+            if not sel:
+                messagebox.showwarning("Brak zaznaczenia", "Wybierz szablon do wczytania")
+                return
+            idx = sel[0]
+            template = templates[idx]
+            for item in template.get("items", []):
+                self.cost_items.append(dict(item))
+            self._refresh_cost_ui()
+            messagebox.showinfo("Wczytano", f"Dodano {len(template.get('items', []))} pozycji z szablonu")
+            w.destroy()
+        
+        def delete_template():
+            sel = listbox.curselection()
+            if not sel:
+                messagebox.showwarning("Brak zaznaczenia", "Wybierz szablon do usunięcia")
+                return
+            idx = sel[0]
+            if not messagebox.askyesno("Usuń szablon", f"Usunąć szablon '{templates[idx].get('name', '?')}'?"):
+                return
+            del templates[idx]
+            self._save_templates(templates)
+            refresh_list()
+        
+        ttk.Button(right, text="💾 Zapisz aktualny jako szablon", command=save_as_template).pack(fill="x", pady=4)
+        ttk.Separator(right, orient="horizontal").pack(fill="x", pady=8)
+        ttk.Button(right, text="📥 Wczytaj wybrany szablon", command=load_template).pack(fill="x", pady=4)
+        ttk.Button(right, text="🗑️ Usuń wybrany szablon", command=delete_template).pack(fill="x", pady=4)
+        ttk.Separator(right, orient="horizontal").pack(fill="x", pady=8)
+        ttk.Button(right, text="Zamknij", command=w.destroy).pack(fill="x", pady=4)
 
 # Run
 if __name__ == "__main__":
