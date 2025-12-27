@@ -1,21 +1,28 @@
 #!/usr/bin/env python3
-# main_app045.py
-# Kalkulator Dachów - v4.5
+# main_app046.py
+# Kalkulator Dachów - v4.6
 # Zmiany:
 # - Przechowywanie ostatniego numeru kosztorysu w settings.json (klucz last_invoice_seq i last_invoice_year).
 #   Dzięki temu numer jest generowany szybko i niezawodnie bez parsowania katalogu.
 # - Poprawka błędu AttributeError: missing calculate_cost_estimation (metoda dodana).
 # - Pełny, zaktualizowany plik aplikacji z wszystkimi funkcjami poprzednich wersji.
+# - v4.6: Integracja modułów: orynnowanie, kominy, obróbki, pomiar dachu
 #
 # Wymagane (opcjonalne do PDF/logo): pip install reportlab pillow
 #
-# Uruchom: python3.12 main_app045.py
+# Uruchom: python3.12 main_app046.py
 
 from typing import List, Dict, Any, Optional
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog, filedialog
 import json, os, csv, platform, subprocess, re
 from datetime import datetime
+
+# Import calculation modules
+from gutter_calculations import calculate_guttering
+from chimney_calculations import calculate_chimney_flashings, calculate_chimney_insulation
+from flashing_calculations import calculate_flashings_total
+from measurement_tab import MeasurementTab
 
 # Pillow for logo preview (optional)
 try:
@@ -216,7 +223,7 @@ class MaterialEditDialog(simpledialog.Dialog):
 class RoofCalculatorApp:
     def __init__(self, master):
         self.master = master
-        master.title("Kalkulator Dachów - v4.5")
+        master.title("Kalkulator Dachów - v4.6")
         master.geometry("1280x940")
         # data stores
         self.clients: List[Dict[str,Any]] = []
@@ -256,7 +263,7 @@ class RoofCalculatorApp:
         # load db/settings
         self._load_local_db(); self._load_settings()
         # build UI
-        self.create_menu(); self.create_notebook(); self.create_cost_tab()
+        self.create_menu(); self.create_notebook(); self.create_all_tabs()
         # set next invoice number on startup (uses settings.json stored sequence)
         self._set_next_invoice_number()
 
@@ -435,6 +442,351 @@ class RoofCalculatorApp:
     # notebook
     def create_notebook(self):
         self.notebook = ttk.Notebook(self.master); self.notebook.pack(expand=True, fill="both", padx=10, pady=10)
+    
+    # Create all tabs
+    def create_all_tabs(self):
+        self.create_cost_tab()
+        self.create_measurement_tab()
+        self.create_gutter_tab()
+        self.create_chimney_tab()
+        self.create_flashing_tab()
+    
+    # measurement tab (Pomiar Dachu)
+    def create_measurement_tab(self):
+        self.measurement_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.measurement_frame, text="Pomiar Dachu")
+        self.measurement_tab_module = MeasurementTab(self, self.measurement_frame)
+        
+        # Add button to transfer area to cost estimate
+        ctrl_frame = ttk.Frame(self.measurement_frame)
+        ctrl_frame.pack(fill="x", padx=10, pady=6)
+        ttk.Button(ctrl_frame, text="Przenieś sumę do metrażu dachu", command=self._transfer_measurement_to_roof_area).pack(side="left", padx=4)
+    
+    def _transfer_measurement_to_roof_area(self):
+        total = self.measurement_tab_module.get_total_area()
+        if total is None or total == 0:
+            messagebox.showwarning("Brak danych", "Brak zmierzonych figur do przeniesienia.")
+            return
+        self.roof_area.set(f"{total:.2f}")
+        messagebox.showinfo("Przeniesiono", f"Powierzchnia {total:.2f} m² przeniesiona do metrażu dachu.")
+    
+    # gutter tab (Orynnowanie)
+    def create_gutter_tab(self):
+        self.gutter_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.gutter_frame, text="Orynnowanie")
+        
+        input_frame = ttk.LabelFrame(self.gutter_frame, text="Parametry orynnowania")
+        input_frame.pack(fill="x", padx=10, pady=8)
+        
+        # Input fields
+        row = 0
+        ttk.Label(input_frame, text="Długość okapu [m]:").grid(row=row, column=0, sticky="w", padx=4, pady=4)
+        self.gutter_okap_length = ttk.Entry(input_frame, width=12)
+        self.gutter_okap_length.grid(row=row, column=1, padx=4, pady=4, sticky="w")
+        row += 1
+        
+        ttk.Label(input_frame, text="Wysokość dachu (rura spustowa) [m]:").grid(row=row, column=0, sticky="w", padx=4, pady=4)
+        self.gutter_roof_height = ttk.Entry(input_frame, width=12)
+        self.gutter_roof_height.grid(row=row, column=1, padx=4, pady=4, sticky="w")
+        row += 1
+        
+        ttk.Label(input_frame, text="Liczba rur spustowych (opcjonalnie):").grid(row=row, column=0, sticky="w", padx=4, pady=4)
+        self.gutter_num_downpipes = ttk.Entry(input_frame, width=12)
+        self.gutter_num_downpipes.grid(row=row, column=1, padx=4, pady=4, sticky="w")
+        row += 1
+        
+        ttk.Button(input_frame, text="Oblicz orynnowanie", command=self._calculate_guttering).grid(row=row, column=0, columnspan=2, pady=8)
+        
+        # Results frame
+        results_frame = ttk.LabelFrame(self.gutter_frame, text="Wyniki obliczeń")
+        results_frame.pack(fill="both", expand=True, padx=10, pady=8)
+        
+        self.gutter_results_text = tk.Text(results_frame, height=12, state="disabled")
+        self.gutter_results_text.pack(fill="both", expand=True, padx=4, pady=4)
+        
+        # Button to transfer to cost estimate
+        ttk.Button(self.gutter_frame, text="Dodaj do kosztorysu", command=self._add_guttering_to_cost).pack(pady=8)
+        
+        self.gutter_last_results = None
+    
+    def _calculate_guttering(self):
+        try:
+            okap_length = float(self.gutter_okap_length.get() or 0)
+            roof_height = float(self.gutter_roof_height.get() or 0)
+            num_downpipes_str = self.gutter_num_downpipes.get().strip()
+            num_downpipes = int(num_downpipes_str) if num_downpipes_str else None
+            
+            results = calculate_guttering(okap_length, roof_height, num_downpipes)
+            self.gutter_last_results = results
+            
+            text = f"""Wyniki obliczeń orynnowania:
+            
+Długość rynny: {results['total_gutter_length_m']:.2f} m
+Długość rur spustowych: {results['total_downpipe_length_m']:.2f} m
+Liczba rur spustowych: {results['num_downpipes']}
+Haki rynnowe: {results['num_gutter_hooks']} szt.
+Łączniki rynny: {results['num_gutter_connectors']} szt.
+Wyloty do rur: {results['num_downpipe_outlets']} szt.
+Obejmy rury spustowej: {results['num_downpipe_clamps']} szt.
+Kolanka rury spustowej: {results['num_downpipe_elbows']} szt.
+Zaślepki: {results['num_end_caps']} szt.
+"""
+            self.gutter_results_text.config(state="normal")
+            self.gutter_results_text.delete("1.0", "end")
+            self.gutter_results_text.insert("end", text)
+            self.gutter_results_text.config(state="disabled")
+            
+        except ValueError as e:
+            messagebox.showerror("Błąd", f"Nieprawidłowe dane: {e}")
+        except Exception as e:
+            messagebox.showerror("Błąd", f"Wystąpił błąd: {e}")
+    
+    def _add_guttering_to_cost(self):
+        if not self.gutter_last_results:
+            messagebox.showwarning("Brak danych", "Najpierw wykonaj obliczenia orynnowania.")
+            return
+        
+        r = self.gutter_last_results
+        items_to_add = [
+            {"name": "Rynna", "quantity": r['total_gutter_length_m'], "unit": "mb", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
+            {"name": "Rura spustowa", "quantity": r['total_downpipe_length_m'], "unit": "mb", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
+            {"name": "Haki rynnowe", "quantity": float(r['num_gutter_hooks']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
+            {"name": "Łączniki rynny", "quantity": float(r['num_gutter_connectors']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
+            {"name": "Wyloty do rur", "quantity": float(r['num_downpipe_outlets']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
+            {"name": "Obejmy rury spustowej", "quantity": float(r['num_downpipe_clamps']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
+            {"name": "Kolanka rury spustowej", "quantity": float(r['num_downpipe_elbows']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
+            {"name": "Zaślepki rynny", "quantity": float(r['num_end_caps']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
+        ]
+        
+        for item in items_to_add:
+            if item["quantity"] > 0:
+                self.cost_items.append(item)
+        
+        self._refresh_cost_ui()
+        messagebox.showinfo("Dodano", "Elementy orynnowania dodane do kosztorysu. Uzupełnij ceny jednostkowe.")
+    
+    # chimney tab (Kominy)
+    def create_chimney_tab(self):
+        self.chimney_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.chimney_frame, text="Kominy")
+        
+        input_frame = ttk.LabelFrame(self.chimney_frame, text="Parametry komina")
+        input_frame.pack(fill="x", padx=10, pady=8)
+        
+        row = 0
+        ttk.Label(input_frame, text="Szerokość komina [m]:").grid(row=row, column=0, sticky="w", padx=4, pady=4)
+        self.chimney_width = ttk.Entry(input_frame, width=12)
+        self.chimney_width.grid(row=row, column=1, padx=4, pady=4, sticky="w")
+        row += 1
+        
+        ttk.Label(input_frame, text="Długość komina [m]:").grid(row=row, column=0, sticky="w", padx=4, pady=4)
+        self.chimney_length = ttk.Entry(input_frame, width=12)
+        self.chimney_length.grid(row=row, column=1, padx=4, pady=4, sticky="w")
+        row += 1
+        
+        ttk.Label(input_frame, text="Wysokość ponad dachem [m]:").grid(row=row, column=0, sticky="w", padx=4, pady=4)
+        self.chimney_height = ttk.Entry(input_frame, width=12)
+        self.chimney_height.grid(row=row, column=1, padx=4, pady=4, sticky="w")
+        row += 1
+        
+        ttk.Label(input_frame, text="Kąt nachylenia dachu [°]:").grid(row=row, column=0, sticky="w", padx=4, pady=4)
+        self.chimney_roof_angle = ttk.Entry(input_frame, width=12)
+        self.chimney_roof_angle.grid(row=row, column=1, padx=4, pady=4, sticky="w")
+        row += 1
+        
+        ttk.Label(input_frame, text="Rodzaj pokrycia:").grid(row=row, column=0, sticky="w", padx=4, pady=4)
+        self.chimney_covering_type = ttk.Combobox(input_frame, values=["papa", "blacha", "dachówka"], width=12, state="readonly")
+        self.chimney_covering_type.set("papa")
+        self.chimney_covering_type.grid(row=row, column=1, padx=4, pady=4, sticky="w")
+        row += 1
+        
+        ttk.Label(input_frame, text="Liczba kominów:").grid(row=row, column=0, sticky="w", padx=4, pady=4)
+        self.chimney_num = ttk.Entry(input_frame, width=12)
+        self.chimney_num.insert(0, "1")
+        self.chimney_num.grid(row=row, column=1, padx=4, pady=4, sticky="w")
+        row += 1
+        
+        ttk.Button(input_frame, text="Oblicz obróbkę komina", command=self._calculate_chimney).grid(row=row, column=0, columnspan=2, pady=8)
+        
+        # Results frame
+        results_frame = ttk.LabelFrame(self.chimney_frame, text="Wyniki obliczeń")
+        results_frame.pack(fill="both", expand=True, padx=10, pady=8)
+        
+        self.chimney_results_text = tk.Text(results_frame, height=12, state="disabled")
+        self.chimney_results_text.pack(fill="both", expand=True, padx=4, pady=4)
+        
+        # Button to transfer to cost estimate
+        ttk.Button(self.chimney_frame, text="Dodaj do kosztorysu", command=self._add_chimney_to_cost).pack(pady=8)
+        
+        self.chimney_last_results = None
+    
+    def _calculate_chimney(self):
+        try:
+            width = float(self.chimney_width.get() or 0)
+            length = float(self.chimney_length.get() or 0)
+            height = float(self.chimney_height.get() or 0)
+            roof_angle = float(self.chimney_roof_angle.get() or 30)
+            covering_type = self.chimney_covering_type.get()
+            num_chimneys = int(self.chimney_num.get() or 1)
+            
+            results = calculate_chimney_flashings(width, length, height, roof_angle, covering_type, num_chimneys)
+            insulation = calculate_chimney_insulation(width, length, height, num_chimneys)
+            results.update(insulation)
+            self.chimney_last_results = results
+            
+            text = f"""Wyniki obliczeń obróbki komina:
+
+Powierzchnia obróbki blacharskiej: {results['total_metal_flashing_surface_m2']:.2f} m²
+Liczba arkuszy blachy (obróbka): {results['num_metal_sheets_flashing']} szt.
+Powierzchnia czapy kominowej: {results['total_chimney_cap_surface_m2']:.2f} m²
+Liczba arkuszy blachy (czapa): {results['num_metal_sheets_cap']} szt.
+Powierzchnia papy na kołnierz: {results['total_felt_flashing_surface_m2']:.2f} m²
+Długość listwy dociskowej: {results['total_clamping_strip_length_m']:.2f} mb
+Obwód pojedynczego komina: {results['single_chimney_perimeter']:.2f} m
+
+Ocieplenie:
+Powierzchnia ocieplenia: {results.get('total_insulation_surface_m2', 0):.2f} m²
+Powierzchnia siatki z klejem: {results.get('total_mesh_surface_m2', 0):.2f} m²
+"""
+            self.chimney_results_text.config(state="normal")
+            self.chimney_results_text.delete("1.0", "end")
+            self.chimney_results_text.insert("end", text)
+            self.chimney_results_text.config(state="disabled")
+            
+        except ValueError as e:
+            messagebox.showerror("Błąd", f"Nieprawidłowe dane: {e}")
+        except Exception as e:
+            messagebox.showerror("Błąd", f"Wystąpił błąd: {e}")
+    
+    def _add_chimney_to_cost(self):
+        if not self.chimney_last_results:
+            messagebox.showwarning("Brak danych", "Najpierw wykonaj obliczenia obróbki komina.")
+            return
+        
+        r = self.chimney_last_results
+        items_to_add = [
+            {"name": "Blacha obróbka komina", "quantity": r['total_metal_flashing_surface_m2'], "unit": "m²", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
+            {"name": "Czapa kominowa - blacha", "quantity": r['total_chimney_cap_surface_m2'], "unit": "m²", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
+        ]
+        
+        if r['total_felt_flashing_surface_m2'] > 0:
+            items_to_add.append({"name": "Papa kołnierz komina", "quantity": r['total_felt_flashing_surface_m2'], "unit": "m²", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"})
+        
+        if r['total_clamping_strip_length_m'] > 0:
+            items_to_add.append({"name": "Listwa dociskowa", "quantity": r['total_clamping_strip_length_m'], "unit": "mb", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"})
+        
+        if r.get('total_insulation_surface_m2', 0) > 0:
+            items_to_add.append({"name": "Ocieplenie komina", "quantity": r['total_insulation_surface_m2'], "unit": "m²", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"})
+            items_to_add.append({"name": "Siatka z klejem (komin)", "quantity": r['total_mesh_surface_m2'], "unit": "m²", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"})
+        
+        for item in items_to_add:
+            if item["quantity"] > 0:
+                self.cost_items.append(item)
+        
+        self._refresh_cost_ui()
+        messagebox.showinfo("Dodano", "Elementy obróbki komina dodane do kosztorysu. Uzupełnij ceny jednostkowe.")
+    
+    # flashing tab (Obróbki)
+    def create_flashing_tab(self):
+        self.flashing_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.flashing_frame, text="Obróbki")
+        
+        input_frame = ttk.LabelFrame(self.flashing_frame, text="Lista obróbek blacharskich")
+        input_frame.pack(fill="x", padx=10, pady=8)
+        
+        # Define flashing types
+        self.flashing_items_vars = {}
+        flashing_types = [
+            ("Gąsiory", "gasior"),
+            ("Wiatrownice", "wiatrownica"),
+            ("Kosze dachowe", "kosz"),
+            ("Obróbka okapu", "okap"),
+            ("Obróbka ściany (gurt)", "gurt"),
+            ("Pas nadrynnowy", "pas_nadrynnowy"),
+            ("Pas podrynnowy", "pas_podrynnowy"),
+        ]
+        
+        row = 0
+        ttk.Label(input_frame, text="Nazwa").grid(row=row, column=0, padx=4, pady=2, sticky="w")
+        ttk.Label(input_frame, text="Zaznacz").grid(row=row, column=1, padx=4, pady=2)
+        ttk.Label(input_frame, text="Długość [m]").grid(row=row, column=2, padx=4, pady=2)
+        ttk.Label(input_frame, text="Szer. rozw. [m]").grid(row=row, column=3, padx=4, pady=2)
+        row += 1
+        
+        for name, key in flashing_types:
+            self.flashing_items_vars[key] = {
+                "selected": tk.BooleanVar(value=False),
+                "length": tk.StringVar(value="0"),
+                "width": tk.StringVar(value="0.33"),
+            }
+            ttk.Label(input_frame, text=name).grid(row=row, column=0, padx=4, pady=2, sticky="w")
+            ttk.Checkbutton(input_frame, variable=self.flashing_items_vars[key]["selected"]).grid(row=row, column=1, padx=4, pady=2)
+            ttk.Entry(input_frame, textvariable=self.flashing_items_vars[key]["length"], width=10).grid(row=row, column=2, padx=4, pady=2)
+            ttk.Entry(input_frame, textvariable=self.flashing_items_vars[key]["width"], width=10).grid(row=row, column=3, padx=4, pady=2)
+            row += 1
+        
+        ttk.Button(input_frame, text="Oblicz obróbki", command=self._calculate_flashings).grid(row=row, column=0, columnspan=4, pady=8)
+        
+        # Results frame
+        results_frame = ttk.LabelFrame(self.flashing_frame, text="Wyniki obliczeń")
+        results_frame.pack(fill="both", expand=True, padx=10, pady=8)
+        
+        self.flashing_results_text = tk.Text(results_frame, height=8, state="disabled")
+        self.flashing_results_text.pack(fill="both", expand=True, padx=4, pady=4)
+        
+        # Button to transfer to cost estimate
+        ttk.Button(self.flashing_frame, text="Dodaj do kosztorysu", command=self._add_flashings_to_cost).pack(pady=8)
+        
+        self.flashing_last_results = None
+    
+    def _calculate_flashings(self):
+        try:
+            flashing_items = {}
+            for key, vars_dict in self.flashing_items_vars.items():
+                flashing_items[key] = {
+                    "selected": vars_dict["selected"].get(),
+                    "length": float(vars_dict["length"].get() or 0),
+                    "width": float(vars_dict["width"].get() or 0),
+                }
+            
+            results = calculate_flashings_total(flashing_items)
+            self.flashing_last_results = results
+            
+            text = f"""Wyniki obliczeń obróbek blacharskich:
+
+Całkowita powierzchnia blachy: {results['total_surface_m2']:.2f} m²
+Liczba arkuszy blachy (1,25x2,5m): {results['num_sheets']} szt.
+
+Szczegóły zaznaczonych obróbek:
+"""
+            for key, data in flashing_items.items():
+                if data["selected"]:
+                    area = data["length"] * data["width"]
+                    text += f"  - {key}: {data['length']:.2f} m × {data['width']:.2f} m = {area:.2f} m²\n"
+            
+            self.flashing_results_text.config(state="normal")
+            self.flashing_results_text.delete("1.0", "end")
+            self.flashing_results_text.insert("end", text)
+            self.flashing_results_text.config(state="disabled")
+            
+        except ValueError as e:
+            messagebox.showerror("Błąd", f"Nieprawidłowe dane: {e}")
+        except Exception as e:
+            messagebox.showerror("Błąd", f"Wystąpił błąd: {e}")
+    
+    def _add_flashings_to_cost(self):
+        if not self.flashing_last_results:
+            messagebox.showwarning("Brak danych", "Najpierw wykonaj obliczenia obróbek.")
+            return
+        
+        r = self.flashing_last_results
+        if r['total_surface_m2'] > 0:
+            item = {"name": "Blacha na obróbki", "quantity": r['total_surface_m2'], "unit": "m²", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"}
+            self.cost_items.append(item)
+            self._refresh_cost_ui()
+            messagebox.showinfo("Dodano", f"Blacha na obróbki ({r['total_surface_m2']:.2f} m²) dodana do kosztorysu. Uzupełnij cenę jednostkową.")
+        else:
+            messagebox.showwarning("Brak danych", "Brak zaznaczonych obróbek do dodania.")
 
     # cost tab UI (kept similar to previous working version)
     def create_cost_tab(self):
@@ -1001,7 +1353,11 @@ class RoofCalculatorApp:
         if not path: return
         client_name = self.client_cb.get() if hasattr(self,"client_cb") else ""
         comment = self.comment_text.get("1.0","end").strip()
-        data = {"items": self.cost_items, "transport_percent": float(self.transport_percent.get()), "transport_vat": int(self.transport_vat.get()), "logo": self.logo_path, "client": client_name, "invoice_number": self.invoice_number.get(), "invoice_date": self.invoice_date.get(), "roof_area": self.roof_area.get(), "quote_name": self.quote_name.get(), "comment": comment, "saved_at": datetime.now().isoformat()}
+        # Get measurement data if available
+        measurement_items = []
+        if hasattr(self, "measurement_tab_module") and self.measurement_tab_module.items:
+            measurement_items = self.measurement_tab_module.items
+        data = {"items": self.cost_items, "transport_percent": float(self.transport_percent.get()), "transport_vat": int(self.transport_vat.get()), "logo": self.logo_path, "client": client_name, "invoice_number": self.invoice_number.get(), "invoice_date": self.invoice_date.get(), "roof_area": self.roof_area.get(), "quote_name": self.quote_name.get(), "comment": comment, "measurement_items": measurement_items, "saved_at": datetime.now().isoformat()}
         try:
             with open(path,"w",encoding="utf-8") as f: json.dump(data, f, ensure_ascii=False, indent=2)
             # update settings last_invoice_seq based on invoice_number format YEAR-SEQ
@@ -1038,6 +1394,15 @@ class RoofCalculatorApp:
             self.quote_name.set(data.get("quote_name", self.quote_name.get()))
             comment = data.get("comment","")
             self.comment_text.delete("1.0","end"); self.comment_text.insert("1.0", comment)
+            # Load measurement items if available
+            measurement_items = data.get("measurement_items", [])
+            if measurement_items and hasattr(self, "measurement_tab_module"):
+                self.measurement_tab_module.items = measurement_items
+                self.measurement_tab_module.tree.delete(*self.measurement_tab_module.tree.get_children())
+                for i, it in enumerate(self.measurement_tab_module.items):
+                    params_display = self.measurement_tab_module._params_to_str(it)
+                    self.measurement_tab_module.tree.insert("", "end", iid=str(i), values=(it["type"], params_display, f"{it['area']:.3f}"))
+                self.measurement_tab_module.update_total_label()
             # optionally update stored last_invoice_seq/year if present in file
             try:
                 m = re.match(r'(\d{4})[-_]?(\d+)', self.invoice_number.get() or "")
