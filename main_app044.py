@@ -1,15 +1,27 @@
 #!/usr/bin/env python3
-# main_app045.py
-# Kalkulator Dachów - v4.5
-# Zmiany:
-# - Przechowywanie ostatniego numeru kosztorysu w settings.json (klucz last_invoice_seq i last_invoice_year).
-#   Dzięki temu numer jest generowany szybko i niezawodnie bez parsowania katalogu.
-# - Poprawka błędu AttributeError: missing calculate_cost_estimation (metoda dodana).
-# - Pełny, zaktualizowany plik aplikacji z wszystkimi funkcjami poprzednich wersji.
+# main_app044.py
+# Kalkulator Dachów - v5.0
+# 
+# Nowe funkcje w wersji 5.0:
+# - Skróty klawiaturowe: Delete (usuń), Enter (edytuj), +/- (zmień ilość), Ctrl+D (duplikuj)
+# - Menu kontekstowe (prawy przycisk myszy) z opcjami: edytuj, usuń, duplikuj, zmień ilość, przenieś kategorię
+# - Przyciski Edytuj/Usuń przeniesione do górnego paska narzędzi (zawsze widoczne)
+# - Eksport do Excel (.xlsx) z profesjonalnym formatowaniem i osobnymi arkuszami
+# - Rozszerzone obliczenia orynnowania z wyborem systemu (PVC, Metal, Miedź, itd.)
+# - Moduł definicji obróbek blacharskich z 8 predefiniowanymi typami
+# - System zarządzania szablonami kosztorysów (3 predefiniowane szablony)
+# - Wersjonowanie kosztorysów (max 10 wersji, porównywanie, przywracanie)
+# - Walidacja kosztorysów z ostrzeżeniami o brakujących materiałach
+# - Testy jednostkowe dla nowych modułów (34 testy)
 #
-# Wymagane (opcjonalne do PDF/logo): pip install reportlab pillow
+# Poprzednie wersje (v4.5):
+# - Przechowywanie ostatniego numeru kosztorysu w settings.json
+# - Poprawka błędu AttributeError: missing calculate_cost_estimation
 #
-# Uruchom: python3.12 main_app045.py
+# Wymagane zależności: pip install -r requirements.txt
+# (reportlab, pillow, openpyxl)
+#
+# Uruchom: python3 main_app044.py
 
 from typing import List, Dict, Any, Optional
 import tkinter as tk
@@ -224,7 +236,7 @@ class MaterialEditDialog(simpledialog.Dialog):
 class RoofCalculatorApp:
     def __init__(self, master):
         self.master = master
-        master.title("Kalkulator Dachów - v4.5")
+        master.title("Kalkulator Dachów - v5.0")
         master.geometry("1280x940")
         # data stores
         self.clients: List[Dict[str,Any]] = []
