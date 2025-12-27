@@ -1391,7 +1391,7 @@ Szczegóły zaznaczonych obróbek:
         comment = self.comment_text.get("1.0","end").strip()
         # Get measurement data if available
         measurement_items = []
-        if hasattr(self, "measurement_tab_module") and self.measurement_tab_module.items:
+        if hasattr(self, "measurement_tab_module") and hasattr(self.measurement_tab_module, "items") and self.measurement_tab_module.items:
             measurement_items = self.measurement_tab_module.items
         data = {"items": self.cost_items, "transport_percent": float(self.transport_percent.get()), "transport_vat": int(self.transport_vat.get()), "logo": self.logo_path, "client": client_name, "invoice_number": self.invoice_number.get(), "invoice_date": self.invoice_date.get(), "roof_area": self.roof_area.get(), "quote_name": self.quote_name.get(), "comment": comment, "measurement_items": measurement_items, "saved_at": datetime.now().isoformat()}
         try:
@@ -1432,13 +1432,18 @@ Szczegóły zaznaczonych obróbek:
             self.comment_text.delete("1.0","end"); self.comment_text.insert("1.0", comment)
             # Load measurement items if available
             measurement_items = data.get("measurement_items", [])
-            if measurement_items and hasattr(self, "measurement_tab_module"):
-                self.measurement_tab_module.items = measurement_items
-                self.measurement_tab_module.tree.delete(*self.measurement_tab_module.tree.get_children())
-                for i, it in enumerate(self.measurement_tab_module.items):
-                    params_display = self.measurement_tab_module._params_to_str(it)
-                    self.measurement_tab_module.tree.insert("", "end", iid=str(i), values=(it["type"], params_display, f"{it['area']:.3f}"))
-                self.measurement_tab_module.update_total_label()
+            if measurement_items and hasattr(self, "measurement_tab_module") and self.measurement_tab_module is not None:
+                try:
+                    self.measurement_tab_module.items = measurement_items
+                    if hasattr(self.measurement_tab_module, "tree"):
+                        self.measurement_tab_module.tree.delete(*self.measurement_tab_module.tree.get_children())
+                        for i, it in enumerate(self.measurement_tab_module.items):
+                            params_display = self.measurement_tab_module._params_to_str(it)
+                            self.measurement_tab_module.tree.insert("", "end", iid=str(i), values=(it["type"], params_display, f"{it['area']:.3f}"))
+                    if hasattr(self.measurement_tab_module, "update_total_label"):
+                        self.measurement_tab_module.update_total_label()
+                except Exception:
+                    pass
             # optionally update stored last_invoice_seq/year if present in file
             try:
                 m = re.match(r'(\d{4})[-_]?(\d+)', self.invoice_number.get() or "")

@@ -24,11 +24,11 @@ pip install reportlab pillow
 
 ## Uruchomienie
 ```bash
-python main_app044.py
+python main_app046.py
 ```
 
 ## Struktura plików
-- `main_app044.py` - główna aplikacja
+- `main_app046.py` - główna aplikacja
 - `gutter_calculations.py` - obliczenia orynnowania
 - `chimney_calculations.py` - obliczenia obróbki kominów
 - `flashing_calculations.py` - obliczenia obróbek blacharskich
