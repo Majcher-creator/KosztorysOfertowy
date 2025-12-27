@@ -4,31 +4,48 @@ __pycache__/
 *$py.class
 *.so
 .Python
-*.egg-info/
-dist/
 build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
 # Virtual environments
 venv/
-env/
 ENV/
+env/
 
 # IDE
-.vscode/
 .idea/
+.vscode/
 *.swp
 *.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
 
+# Application data
+.roofcalc/
+settings.json
+
 # Local data
 *.cost.json
 *.pdf
-settings.json
-.roofcalc/
 
-# Backup files
+# Temporary and backup files
+*.tmp
+*.temp
+*.log
 *.bak
-*~

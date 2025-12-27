@@ -1,6 +1,19 @@
 # KosztorysOfertowy - Kalkulator Dachów v5.0
 
-Profesjonalna aplikacja do tworzenia kosztorysów i ofert dla branży dekarskiej.
+Profesjonalna aplikacja do tworzenia kosztorysów ofertowych dla prac dekarskich.
+
+## ✨ Główne funkcje
+
+### 📋 Kosztorys/Oferta
+- Główny moduł do tworzenia kosztorysów z materiałami i usługami
+- Nowoczesny interfejs z kolorystką dopasowaną do branży dekarskiej
+- Ikony dla lepszej nawigacji
+
+### 📐 Zakładki kalkulatorów
+- **Pomiar Dachu** - Kalkulator powierzchni dachu (jednospadowy, dwuspadowy, kopertowy)
+- **Rynny** - Kalkulator systemu rynnowego (rynny, rury spustowe, akcesoria)
+- **Kominy** - Kalkulator obróbek kominowych i czap
+- **Obróbki** - Kalkulator obróbek blacharskich (wiatrownice, okapnice, pasy nadrynnowe)
 
 ## Nowe funkcje w wersji 5.0
 
@@ -30,6 +43,18 @@ Profesjonalna aplikacja do tworzenia kosztorysów i ofert dla branży dekarskiej
 - **version_control.py** - Wersjonowanie i historia zmian
 - **validators.py** - Walidacja i ostrzeżenia
 
+### 🎨 Ulepszony interfejs (UI)
+- Pomarańczowe akcenty (kolor dachówki)
+- Nowoczesny styl CSS dla eksportu PDF
+- Przejrzyste tabele z podsumowaniami
+
+## 📄 Eksport
+
+- **PDF** - Profesjonalny kosztorys ofertowy z logo firmy
+- **Excel** - Eksport z formatowaniem do .xlsx
+- **CSV** - Eksport danych do arkusza kalkulacyjnego
+- **JSON** - Zapisywanie i wczytywanie kosztorysów
+
 ## Instalacja
 
 ### Wymagania
@@ -46,29 +71,11 @@ Zależności:
 - `Pillow>=9.0.0` - Obsługa obrazów/logo
 - `openpyxl>=3.0.0` - Eksport do Excel
 
-## Uruchomienie
+## 🚀 Uruchomienie
 
 ```bash
-python3 main_app044.py
+python main_app044.py
 ```
-
-## Funkcje aplikacji
-
-### Podstawowe funkcje
-- Tworzenie kosztorysów z materiałami i usługami
-- Kalkulacja VAT i transportu
-- Eksport do CSV, Excel, PDF
-- Zarządzanie bazą klientów
-- Zarządzanie bazą materiałów
-- Numerowanie automatyczne kosztorysów
-
-### Zaawansowane funkcje
-- Obliczenia dla różnych pokryć dachowych
-- Obliczenia więźby dachowej
-- Obliczenia orynnowania
-- Obróbki blacharskie
-- Komentarze do kosztorysu
-- Logo firmy w PDF
 
 ## Testy
 
@@ -76,12 +83,12 @@ Projekt zawiera kompleksowy zestaw testów jednostkowych:
 
 ```bash
 # Uruchom wszystkie testy
-python3 -m unittest discover tests/
+python -m unittest discover tests/
 
 # Uruchom konkretny test
-python3 tests/test_gutters.py
-python3 tests/test_flashings.py
-python3 tests/test_validators.py
+python tests/test_gutters.py
+python tests/test_flashings.py
+python tests/test_validators.py
 ```
 
 **Statystyki testów:**
@@ -91,11 +98,11 @@ python3 tests/test_validators.py
 - Testy walidacji: 11
 - Status: ✅ Wszystkie przechodzą
 
-## Struktura plików
+## 📁 Struktura projektu
 
 ```
 KosztorysOfertowy/
-├── main_app044.py              # Główna aplikacja
+├── main_app044.py              # Główna aplikacja GUI
 ├── gutter_calculations.py      # Obliczenia orynnowania
 ├── flashing_definitions.py     # Definicje obróbek
 ├── templates_manager.py        # Szablony kosztorysów
@@ -106,11 +113,15 @@ KosztorysOfertowy/
 ├── roof_calculations.py        # Obliczenia pokryć
 ├── chimney_calculations.py     # Obliczenia kominów
 ├── felt_calculations.py        # Obliczenia papa
-├── flashing_calculations.py    # Stare obliczenia obróbek
-├── generuj_pdf.py             # Generator PDF
-├── requirements.txt           # Zależności
-├── .gitignore                 # Git ignore
-└── tests/                     # Testy jednostkowe
+├── flashing_calculations.py    # Obliczenia obróbek
+├── measurement_tab.py          # Moduł pomiaru figur
+├── generuj_pdf.py              # Generator PDF
+├── template.html               # Szablon HTML dla PDF
+├── style.css                   # Style CSS dla PDF
+├── materialy_uslugi.json       # Baza materiałów i usług
+├── requirements.txt            # Zależności
+├── .gitignore                  # Git ignore
+└── tests/                      # Testy jednostkowe
     ├── test_gutters.py
     ├── test_flashings.py
     └── test_validators.py
@@ -135,12 +146,8 @@ Projekt jest aktywnie rozwijany. Nowe funkcje w planach:
 - Podgląd PDF przed zapisem
 - Import cenników z Excel/CSV
 
-## Licencja
+## 📋 Autor
 
-Projekt prywatny - VICTOR TOMASZ MAJCHERCZYK
-
-## Autor
-
-VICTOR TOMASZ MAJCHERCZYK
-- Email: victor.dachy@example.com
-- Telefon: 555-555-555
+**VICTOR TOMASZ MAJCHERCZYK**  
+Dąbrowa Górnicza  
+*TYLKO DACHY TYLKO VICTOR*

@@ -12,5 +12,131 @@
     "price_unit_net": 98.0,
     "vat_rate": 8,
     "category": "material"
+  },
+  {
+    "name": "Papa podkładowa",
+    "unit": "m2",
+    "price_unit_net": 22.0,
+    "vat_rate": 8,
+    "category": "material"
+  },
+  {
+    "name": "Dachówka ceramiczna",
+    "unit": "m2",
+    "price_unit_net": 45.0,
+    "vat_rate": 8,
+    "category": "material"
+  },
+  {
+    "name": "Rynna PVC 100mm",
+    "unit": "mb",
+    "price_unit_net": 25.0,
+    "vat_rate": 8,
+    "category": "material"
+  },
+  {
+    "name": "Rura spustowa PVC 100mm",
+    "unit": "mb",
+    "price_unit_net": 28.0,
+    "vat_rate": 8,
+    "category": "material"
+  },
+  {
+    "name": "Hak rynnowy",
+    "unit": "szt.",
+    "price_unit_net": 8.0,
+    "vat_rate": 8,
+    "category": "material"
+  },
+  {
+    "name": "Wkręty farmerskie",
+    "unit": "op.",
+    "price_unit_net": 35.0,
+    "vat_rate": 8,
+    "category": "material"
+  },
+  {
+    "name": "Płyta OSB 18mm",
+    "unit": "m2",
+    "price_unit_net": 42.0,
+    "vat_rate": 8,
+    "category": "material"
+  },
+  {
+    "name": "Folia paroprzepuszczalna",
+    "unit": "m2",
+    "price_unit_net": 4.5,
+    "vat_rate": 8,
+    "category": "material"
+  },
+  {
+    "name": "Listwa dociskowa",
+    "unit": "mb",
+    "price_unit_net": 15.0,
+    "vat_rate": 8,
+    "category": "material"
+  },
+  {
+    "name": "Gąsior ceramiczny",
+    "unit": "mb",
+    "price_unit_net": 85.0,
+    "vat_rate": 8,
+    "category": "material"
+  },
+  {
+    "name": "Wiatrownica blaszana",
+    "unit": "mb",
+    "price_unit_net": 35.0,
+    "vat_rate": 8,
+    "category": "material"
+  },
+  {
+    "name": "Montaż pokrycia dachowego",
+    "unit": "m2",
+    "price_unit_net": 30.0,
+    "vat_rate": 8,
+    "category": "service"
+  },
+  {
+    "name": "Montaż systemu rynnowego",
+    "unit": "mb",
+    "price_unit_net": 15.0,
+    "vat_rate": 8,
+    "category": "service"
+  },
+  {
+    "name": "Montaż obróbek blacharskich",
+    "unit": "mb",
+    "price_unit_net": 35.0,
+    "vat_rate": 8,
+    "category": "service"
+  },
+  {
+    "name": "Montaż okna dachowego",
+    "unit": "szt.",
+    "price_unit_net": 350.0,
+    "vat_rate": 8,
+    "category": "service"
+  },
+  {
+    "name": "Demontaż starego pokrycia",
+    "unit": "m2",
+    "price_unit_net": 12.0,
+    "vat_rate": 8,
+    "category": "service"
+  },
+  {
+    "name": "Utylizacja odpadów",
+    "unit": "m3",
+    "price_unit_net": 180.0,
+    "vat_rate": 8,
+    "category": "service"
+  },
+  {
+    "name": "Izolacja komina",
+    "unit": "szt.",
+    "price_unit_net": 250.0,
+    "vat_rate": 8,
+    "category": "service"
   }
 ]
