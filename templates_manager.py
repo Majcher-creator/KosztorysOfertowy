@@ -237,8 +237,19 @@ class TemplatesManager:
             ID utworzonego szablonu
         """
         # Generuj ID na podstawie nazwy i timestamp
+        import re
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        template_id = f"{name.lower().replace(' ', '_')}_{timestamp}"
+        # Usuń znaki specjalne i zachowaj tylko litery, cyfry i podkreślenia
+        safe_name = re.sub(r'[^\w\s-]', '', name.lower())
+        safe_name = re.sub(r'[-\s]+', '_', safe_name)
+        template_id = f"{safe_name}_{timestamp}"
+        
+        # Sprawdź czy ID już istnieje (mało prawdopodobne, ale zabezpieczenie)
+        counter = 1
+        original_id = template_id
+        while any(t["id"] == template_id for t in self.templates):
+            template_id = f"{original_id}_{counter}"
+            counter += 1
         
         template = {
             "id": template_id,

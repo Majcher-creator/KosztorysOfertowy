@@ -139,14 +139,27 @@ class FlashingDefinition:
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'FlashingDefinition':
-        """Tworzy definicję ze słownika."""
+        """Tworzy definicję ze słownika z walidacją."""
+        # Walidacja danych wejściowych
+        width_cm = float(data.get("width_cm", 25.0))
+        if width_cm <= 0:
+            raise ValueError(f"Szerokość musi być dodatnia, otrzymano: {width_cm}")
+        
+        price_per_mb = float(data.get("price_per_mb", 0.0))
+        if price_per_mb < 0:
+            raise ValueError(f"Cena nie może być ujemna, otrzymano: {price_per_mb}")
+        
+        price_per_m2 = float(data.get("price_per_m2", 0.0))
+        if price_per_m2 < 0:
+            raise ValueError(f"Cena nie może być ujemna, otrzymano: {price_per_m2}")
+        
         return cls(
             name=data.get("name", ""),
             description=data.get("description", ""),
-            width_cm=data.get("width_cm", 25.0),
+            width_cm=width_cm,
             material=data.get("material", "Blacha powlekana"),
-            price_per_mb=data.get("price_per_mb", 0.0),
-            price_per_m2=data.get("price_per_m2", 0.0),
+            price_per_mb=price_per_mb,
+            price_per_m2=price_per_m2,
             unit=data.get("unit", "mb"),
             category=data.get("category", "custom")
         )

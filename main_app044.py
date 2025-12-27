@@ -1006,7 +1006,7 @@ class RoofCalculatorApp:
             
             # Separate materials and services
             materials = [it for it in items_aug if it.get("category", "material") == "material"]
-            services = [it for it in items_aug if it.get("category", "material") == "service"]
+            services = [it for it in items_aug if it.get("category", "service") == "service"]
             
             # Create workbook
             wb = Workbook()

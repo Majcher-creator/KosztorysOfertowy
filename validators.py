@@ -17,14 +17,14 @@ class CostEstimateValidator:
                 "requires": [
                     {"keywords": ["hak", "haki rynnowe"], "name": "Haki rynnowe"}
                 ],
-                "ratio": 2.0  # haki na metr rynny (co 0.5m)
+                "hooks_per_meter": 2.0  # haki na metr rynny (co 0.5m)
             },
             "rura spustowa": {
                 "keywords": ["rura spustowa", "rury spustowe"],
                 "requires": [
                     {"keywords": ["objętka", "obejma", "objęcia"], "name": "Objętki/obejmy rury spustowej"}
                 ],
-                "ratio": 0.5  # objętki na metr rury (co 2m)
+                "clamps_per_meter": 0.5  # objętki na metr rury (co 2m)
             },
             "papa": {
                 "keywords": ["papa"],
