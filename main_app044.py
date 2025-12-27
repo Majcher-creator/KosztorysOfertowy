@@ -453,11 +453,14 @@ class RoofCalculatorApp:
         ttk.Label(inv_frame, text="Nazwa kosztorysu:").grid(row=1,column=0,sticky="e"); ttk.Entry(inv_frame,width=30,textvariable=self.quote_name).grid(row=1,column=1,columnspan=4,padx=4)
         ttk.Label(inv_frame, text="Data:").grid(row=0,column=5,sticky="e"); ttk.Entry(inv_frame,width=12,textvariable=self.invoice_date).grid(row=0,column=6,padx=4)
 
-        # toolbar
+        # toolbar with edit/delete buttons always visible
         toolbar = ttk.Frame(left); toolbar.pack(fill="x", pady=(0,6))
         ttk.Button(toolbar, text="Oblicz kosztorys", command=self.calculate_cost_estimation).pack(side="left", padx=4)
         ttk.Button(toolbar, text="Eksportuj CSV", command=self.export_cost_csv).pack(side="left", padx=4)
         ttk.Button(toolbar, text="Eksportuj PDF", command=self.export_cost_pdf).pack(side="left", padx=4)
+        ttk.Separator(toolbar, orient="vertical").pack(side="left", fill="y", padx=8)
+        ttk.Button(toolbar, text="Edytuj zaznaczoną", command=self._edit_selected_item).pack(side="left", padx=4)
+        ttk.Button(toolbar, text="Usuń zaznaczoną", command=self._delete_selected_item).pack(side="left", padx=4)
         ttk.Button(toolbar, text="Wstaw z bazy", command=self.manage_materials_db).pack(side="right", padx=4)
         ttk.Button(toolbar, text="Klienci", command=self.manage_clients).pack(side="right", padx=4)
 
@@ -485,9 +488,6 @@ class RoofCalculatorApp:
         self.mat_tree.configure(yscrollcommand=mat_vscroll.set)
         self.mat_tree.pack(side="left", fill="both", expand=True)
         mat_vscroll.pack(side="right", fill="y")
-        mat_btnf = ttk.Frame(mat_frame); mat_btnf.pack(fill="x", padx=6, pady=4)
-        ttk.Button(mat_btnf, text="Edytuj zaznaczoną", command=lambda: self._edit_from_tree("material")).pack(side="left", padx=4)
-        ttk.Button(mat_btnf, text="Usuń zaznaczoną", command=lambda: self._delete_from_tree("material")).pack(side="left", padx=4)
 
         # services tree with scrollbar
         srv_tree_container = ttk.Frame(srv_frame); srv_tree_container.pack(fill="both", expand=True, padx=6, pady=6)
@@ -500,9 +500,6 @@ class RoofCalculatorApp:
         self.srv_tree.configure(yscrollcommand=srv_vscroll.set)
         self.srv_tree.pack(side="left", fill="both", expand=True)
         srv_vscroll.pack(side="right", fill="y")
-        srv_btnf = ttk.Frame(srv_frame); srv_btnf.pack(fill="x", padx=6, pady=4)
-        ttk.Button(srv_btnf, text="Edytuj zaznaczoną", command=lambda: self._edit_from_tree("service")).pack(side="left", padx=4)
-        ttk.Button(srv_btnf, text="Usuń zaznaczoną", command=lambda: self._delete_from_tree("service")).pack(side="left", padx=4)
 
         # right panel (add item / client / transport / summary)
         right = ttk.Frame(right_container); right.pack(fill="both", expand=True, padx=4, pady=4)
@@ -533,6 +530,27 @@ class RoofCalculatorApp:
         # double-click edit bindings
         self.mat_tree.bind("<Double-1>", lambda e: self._edit_from_tree("material"))
         self.srv_tree.bind("<Double-1>", lambda e: self._edit_from_tree("service"))
+        
+        # keyboard shortcuts for both trees
+        self.mat_tree.bind("<Delete>", lambda e: self._delete_from_tree("material"))
+        self.mat_tree.bind("<Return>", lambda e: self._edit_from_tree("material"))
+        self.mat_tree.bind("<KP_Add>", lambda e: self._adjust_quantity("material", 1))
+        self.mat_tree.bind("<plus>", lambda e: self._adjust_quantity("material", 1))
+        self.mat_tree.bind("<KP_Subtract>", lambda e: self._adjust_quantity("material", -1))
+        self.mat_tree.bind("<minus>", lambda e: self._adjust_quantity("material", -1))
+        self.mat_tree.bind("<Control-d>", lambda e: self._duplicate_item("material"))
+        
+        self.srv_tree.bind("<Delete>", lambda e: self._delete_from_tree("service"))
+        self.srv_tree.bind("<Return>", lambda e: self._edit_from_tree("service"))
+        self.srv_tree.bind("<KP_Add>", lambda e: self._adjust_quantity("service", 1))
+        self.srv_tree.bind("<plus>", lambda e: self._adjust_quantity("service", 1))
+        self.srv_tree.bind("<KP_Subtract>", lambda e: self._adjust_quantity("service", -1))
+        self.srv_tree.bind("<minus>", lambda e: self._adjust_quantity("service", -1))
+        self.srv_tree.bind("<Control-d>", lambda e: self._duplicate_item("service"))
+        
+        # context menu (right-click)
+        self.mat_tree.bind("<Button-3>", lambda e: self._show_context_menu(e, "material"))
+        self.srv_tree.bind("<Button-3>", lambda e: self._show_context_menu(e, "service"))
 
         self._refresh_cost_ui()
 
@@ -587,6 +605,106 @@ class RoofCalculatorApp:
         idx = int(sel[0])
         if not messagebox.askyesno("Usuń","Usunąć pozycję?"): return
         del self.cost_items[idx]; self._refresh_cost_ui()
+    
+    def _edit_selected_item(self):
+        """Edit item from either tree (toolbar button)"""
+        # Check which tree has focus
+        focused = self.master.focus_get()
+        if focused == self.mat_tree or str(focused).endswith(str(self.mat_tree)):
+            if self.mat_tree.selection():
+                self._edit_from_tree("material")
+                return
+        if focused == self.srv_tree or str(focused).endswith(str(self.srv_tree)):
+            if self.srv_tree.selection():
+                self._edit_from_tree("service")
+                return
+        # If no focus, check which tree has selection
+        if self.mat_tree.selection():
+            self._edit_from_tree("material")
+        elif self.srv_tree.selection():
+            self._edit_from_tree("service")
+        else:
+            messagebox.showwarning("Brak zaznaczenia", "Wybierz pozycję do edycji")
+    
+    def _delete_selected_item(self):
+        """Delete item from either tree (toolbar button)"""
+        # Check which tree has focus
+        focused = self.master.focus_get()
+        if focused == self.mat_tree or str(focused).endswith(str(self.mat_tree)):
+            if self.mat_tree.selection():
+                self._delete_from_tree("material")
+                return
+        if focused == self.srv_tree or str(focused).endswith(str(self.srv_tree)):
+            if self.srv_tree.selection():
+                self._delete_from_tree("service")
+                return
+        # If no focus, check which tree has selection
+        if self.mat_tree.selection():
+            self._delete_from_tree("material")
+        elif self.srv_tree.selection():
+            self._delete_from_tree("service")
+        else:
+            messagebox.showwarning("Brak zaznaczenia", "Wybierz pozycję do usunięcia")
+    
+    def _adjust_quantity(self, kind: str, delta: int):
+        """Adjust quantity of selected item by delta (+1 or -1)"""
+        tree = self.mat_tree if kind=="material" else self.srv_tree
+        sel = tree.selection()
+        if not sel: return
+        idx = int(sel[0])
+        item = self.cost_items[idx]
+        current_qty = float(item.get("quantity", 0.0))
+        new_qty = max(0.0, current_qty + delta)
+        item["quantity"] = new_qty
+        self._refresh_cost_ui()
+        # Re-select the item
+        tree.selection_set(str(idx))
+    
+    def _duplicate_item(self, kind: str):
+        """Duplicate selected item"""
+        tree = self.mat_tree if kind=="material" else self.srv_tree
+        sel = tree.selection()
+        if not sel: return
+        idx = int(sel[0])
+        item = self.cost_items[idx].copy()
+        item["name"] = item.get("name", "") + " (kopia)"
+        self.cost_items.insert(idx + 1, item)
+        self._refresh_cost_ui()
+        # Select the new item
+        tree.selection_set(str(idx + 1))
+    
+    def _show_context_menu(self, event, kind: str):
+        """Show context menu on right-click"""
+        tree = self.mat_tree if kind=="material" else self.srv_tree
+        # Select item under cursor
+        item_id = tree.identify_row(event.y)
+        if item_id:
+            tree.selection_set(item_id)
+            menu = tk.Menu(tree, tearoff=0)
+            menu.add_command(label="Edytuj", command=lambda: self._edit_from_tree(kind))
+            menu.add_command(label="Usuń", command=lambda: self._delete_from_tree(kind))
+            menu.add_separator()
+            menu.add_command(label="Duplikuj", command=lambda: self._duplicate_item(kind))
+            menu.add_command(label="Zwiększ ilość (+1)", command=lambda: self._adjust_quantity(kind, 1))
+            menu.add_command(label="Zmniejsz ilość (-1)", command=lambda: self._adjust_quantity(kind, -1))
+            menu.add_separator()
+            other_kind = "service" if kind == "material" else "material"
+            other_label = "Przenieś do usług" if kind == "material" else "Przenieś do materiałów"
+            menu.add_command(label=other_label, command=lambda: self._move_item_category(kind, other_kind))
+            try:
+                menu.tk_popup(event.x_root, event.y_root)
+            finally:
+                menu.grab_release()
+    
+    def _move_item_category(self, from_kind: str, to_kind: str):
+        """Move item between materials and services"""
+        tree = self.mat_tree if from_kind=="material" else self.srv_tree
+        sel = tree.selection()
+        if not sel: return
+        idx = int(sel[0])
+        item = self.cost_items[idx]
+        item["category"] = to_kind
+        self._refresh_cost_ui()
 
     # calculation / summary (fix for missing method)
     def calculate_cost_estimation(self):
