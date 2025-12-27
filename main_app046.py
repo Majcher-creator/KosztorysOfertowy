@@ -624,46 +624,149 @@ class RoofCalculatorApp:
         self.roof_area.set(f"{total:.2f}")
         messagebox.showinfo("Przeniesiono", f"Powierzchnia {total:.2f} m² przeniesiona do metrażu dachu.")
     
-    # gutter tab (Orynnowanie)
+    # gutter tab (Orynnowanie) - Enhanced with system selection and manual quantities
     def create_gutter_tab(self):
         if not GUTTER_AVAILABLE:
             return
         self.gutter_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.gutter_frame, text="Orynnowanie")
         
-        input_frame = ttk.LabelFrame(self.gutter_frame, text="Parametry orynnowania")
+        # Import GUTTER_SYSTEMS
+        from gutter_calculations import GUTTER_SYSTEMS
+        
+        # System selection frame
+        system_frame = ttk.LabelFrame(self.gutter_frame, text="System orynnowania")
+        system_frame.pack(fill="x", padx=10, pady=8)
+        
+        ttk.Label(system_frame, text="Wybierz system:").grid(row=0, column=0, sticky="w", padx=4, pady=4)
+        self.gutter_system = ttk.Combobox(system_frame, values=list(GUTTER_SYSTEMS.keys()), width=20, state="readonly")
+        self.gutter_system.set("PVC 125")
+        self.gutter_system.grid(row=0, column=1, padx=4, pady=4, sticky="w")
+        ttk.Button(system_frame, text="Zarządzaj cenami systemów", command=self._manage_gutter_prices).grid(row=0, column=2, padx=4, pady=4)
+        
+        # Basic parameters frame
+        input_frame = ttk.LabelFrame(self.gutter_frame, text="Parametry podstawowe")
         input_frame.pack(fill="x", padx=10, pady=8)
         
-        # Input fields
         row = 0
         ttk.Label(input_frame, text="Długość okapu [m]:").grid(row=row, column=0, sticky="w", padx=4, pady=4)
         self.gutter_okap_length = ttk.Entry(input_frame, width=12)
         self.gutter_okap_length.grid(row=row, column=1, padx=4, pady=4, sticky="w")
-        row += 1
         
-        ttk.Label(input_frame, text="Wysokość dachu (rura spustowa) [m]:").grid(row=row, column=0, sticky="w", padx=4, pady=4)
+        ttk.Label(input_frame, text="Wysokość dachu (rura spustowa) [m]:").grid(row=row, column=2, sticky="w", padx=4, pady=4)
         self.gutter_roof_height = ttk.Entry(input_frame, width=12)
-        self.gutter_roof_height.grid(row=row, column=1, padx=4, pady=4, sticky="w")
+        self.gutter_roof_height.grid(row=row, column=3, padx=4, pady=4, sticky="w")
         row += 1
         
         ttk.Label(input_frame, text="Liczba rur spustowych (opcjonalnie):").grid(row=row, column=0, sticky="w", padx=4, pady=4)
         self.gutter_num_downpipes = ttk.Entry(input_frame, width=12)
         self.gutter_num_downpipes.grid(row=row, column=1, padx=4, pady=4, sticky="w")
-        row += 1
         
-        ttk.Button(input_frame, text="Oblicz orynnowanie", command=self._calculate_guttering).grid(row=row, column=0, columnspan=2, pady=8)
+        # Manual quantities frame
+        manual_frame = ttk.LabelFrame(self.gutter_frame, text="Ręczne ilości elementów (opcjonalne)")
+        manual_frame.pack(fill="x", padx=10, pady=8)
+        
+        self.gutter_manual_vars = {}
+        manual_elements = [
+            ("Kolanka", "elbows", 0),
+            ("Trójniki", "tees", 0),
+            ("Narożniki wewnętrzne", "corners_internal", 0),
+            ("Narożniki zewnętrzne", "corners_external", 0),
+            ("Zaślepki lewe", "end_caps_left", 0),
+            ("Zaślepki prawe", "end_caps_right", 0),
+            ("Lejki/wpusty", "funnels", 0),
+        ]
+        
+        row = 0
+        col = 0
+        for label, key, default in manual_elements:
+            ttk.Label(manual_frame, text=f"{label}:").grid(row=row, column=col*2, sticky="w", padx=4, pady=2)
+            var = tk.StringVar(value=str(default))
+            self.gutter_manual_vars[key] = var
+            ttk.Entry(manual_frame, textvariable=var, width=8).grid(row=row, column=col*2+1, padx=4, pady=2, sticky="w")
+            col += 1
+            if col >= 2:
+                col = 0
+                row += 1
+        
+        # Calculate button
+        btn_frame = ttk.Frame(self.gutter_frame)
+        btn_frame.pack(fill="x", padx=10, pady=8)
+        ttk.Button(btn_frame, text="Oblicz orynnowanie", command=self._calculate_guttering).pack(side="left", padx=4)
         
         # Results frame
         results_frame = ttk.LabelFrame(self.gutter_frame, text="Wyniki obliczeń")
         results_frame.pack(fill="both", expand=True, padx=10, pady=8)
         
-        self.gutter_results_text = tk.Text(results_frame, height=12, state="disabled")
+        self.gutter_results_text = tk.Text(results_frame, height=14, state="disabled")
         self.gutter_results_text.pack(fill="both", expand=True, padx=4, pady=4)
         
-        # Button to transfer to cost estimate
-        ttk.Button(self.gutter_frame, text="Dodaj do kosztorysu", command=self._add_guttering_to_cost).pack(pady=8)
+        # Add to cost estimate buttons
+        add_frame = ttk.Frame(self.gutter_frame)
+        add_frame.pack(fill="x", padx=10, pady=8)
+        ttk.Button(add_frame, text="Dodaj jako komplet", command=lambda: self._add_guttering_to_cost(as_set=True)).pack(side="left", padx=4)
+        ttk.Button(add_frame, text="Dodaj szczegółowo", command=lambda: self._add_guttering_to_cost(as_set=False)).pack(side="left", padx=4)
         
         self.gutter_last_results = None
+    
+    def _manage_gutter_prices(self):
+        """Dialog for managing gutter system prices"""
+        from gutter_calculations import GUTTER_SYSTEMS, save_gutter_system_prices, load_gutter_system_prices
+        
+        dlg = tk.Toplevel(self.master)
+        dlg.title("Zarządzanie cenami systemów orynnowania")
+        dlg.geometry("600x400")
+        
+        # Load current prices
+        prices_path = self._local_db_path("gutter_systems.json")
+        systems = load_gutter_system_prices(prices_path)
+        
+        # Create treeview for editing
+        frame = ttk.Frame(dlg)
+        frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        cols = ("system", "price")
+        tree = ttk.Treeview(frame, columns=cols, show="headings", selectmode="browse")
+        tree.heading("system", text="System")
+        tree.heading("price", text="Cena za mb [zł]")
+        tree.column("system", width=300)
+        tree.column("price", width=150)
+        tree.pack(fill="both", expand=True)
+        
+        # Populate tree
+        def populate():
+            for iid in tree.get_children():
+                tree.delete(iid)
+            for sys_name, sys_data in systems.items():
+                tree.insert("", "end", iid=sys_name, values=(sys_name, f"{sys_data.get('price_per_meter', 0.0):.2f}"))
+        
+        populate()
+        
+        # Edit price function
+        def edit_price():
+            sel = tree.selection()
+            if not sel:
+                messagebox.showwarning("Brak zaznaczenia", "Wybierz system do edycji")
+                return
+            sys_name = sel[0]
+            current_price = systems[sys_name].get("price_per_meter", 0.0)
+            new_price = simpledialog.askfloat("Edycja ceny", f"Podaj nową cenę za mb dla {sys_name}:", initialvalue=current_price, minvalue=0.0)
+            if new_price is not None:
+                systems[sys_name]["price_per_meter"] = new_price
+                populate()
+        
+        # Buttons
+        btn_frame = ttk.Frame(dlg)
+        btn_frame.pack(fill="x", padx=10, pady=10)
+        ttk.Button(btn_frame, text="Edytuj cenę", command=edit_price).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Zapisz i zamknij", command=lambda: save_and_close()).pack(side="right", padx=4)
+        
+        def save_and_close():
+            save_gutter_system_prices(prices_path, systems)
+            messagebox.showinfo("Zapisano", "Ceny systemów zapisane")
+            dlg.destroy()
+        
+        tree.bind("<Double-1>", lambda e: edit_price())
     
     def _calculate_guttering(self):
         try:
@@ -671,12 +774,24 @@ class RoofCalculatorApp:
             roof_height = float(self.gutter_roof_height.get() or 0)
             num_downpipes_str = self.gutter_num_downpipes.get().strip()
             num_downpipes = int(num_downpipes_str) if num_downpipes_str else None
+            system_type = self.gutter_system.get()
             
-            results = calculate_guttering(okap_length, roof_height, num_downpipes)
+            # Collect manual quantities
+            manual_quantities = {}
+            for key, var in self.gutter_manual_vars.items():
+                try:
+                    val = int(var.get() or 0)
+                    if val > 0:
+                        manual_quantities[key] = val
+                except Exception:
+                    pass
+            
+            results = calculate_guttering(okap_length, roof_height, num_downpipes, manual_quantities, system_type)
             self.gutter_last_results = results
             
             text = f"""Wyniki obliczeń orynnowania:
-            
+System: {system_type}
+
 Długość rynny: {results['total_gutter_length_m']:.2f} m
 Długość rur spustowych: {results['total_downpipe_length_m']:.2f} m
 Liczba rur spustowych: {results['num_downpipes']}
@@ -687,6 +802,17 @@ Obejmy rury spustowej: {results['num_downpipe_clamps']} szt.
 Kolanka rury spustowej: {results['num_downpipe_elbows']} szt.
 Zaślepki: {results['num_end_caps']} szt.
 """
+            if results['num_corners_internal'] > 0:
+                text += f"Narożniki wewnętrzne: {results['num_corners_internal']} szt.\n"
+            if results['num_corners_external'] > 0:
+                text += f"Narożniki zewnętrzne: {results['num_corners_external']} szt.\n"
+            if results['num_end_caps_left'] > 0:
+                text += f"Zaślepki lewe: {results['num_end_caps_left']} szt.\n"
+            if results['num_end_caps_right'] > 0:
+                text += f"Zaślepki prawe: {results['num_end_caps_right']} szt.\n"
+            if results['num_funnels'] > 0:
+                text += f"Lejki/wpusty: {results['num_funnels']} szt.\n"
+            
             self.gutter_results_text.config(state="normal")
             self.gutter_results_text.delete("1.0", "end")
             self.gutter_results_text.insert("end", text)
@@ -697,29 +823,59 @@ Zaślepki: {results['num_end_caps']} szt.
         except Exception as e:
             messagebox.showerror("Błąd", f"Wystąpił błąd: {e}")
     
-    def _add_guttering_to_cost(self):
+    def _add_guttering_to_cost(self, as_set=False):
         if not self.gutter_last_results:
             messagebox.showwarning("Brak danych", "Najpierw wykonaj obliczenia orynnowania.")
             return
         
         r = self.gutter_last_results
-        items_to_add = [
-            {"name": "Rynna", "quantity": r['total_gutter_length_m'], "unit": "mb", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
-            {"name": "Rura spustowa", "quantity": r['total_downpipe_length_m'], "unit": "mb", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
-            {"name": "Haki rynnowe", "quantity": float(r['num_gutter_hooks']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
-            {"name": "Łączniki rynny", "quantity": float(r['num_gutter_connectors']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
-            {"name": "Wyloty do rur", "quantity": float(r['num_downpipe_outlets']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
-            {"name": "Obejmy rury spustowej", "quantity": float(r['num_downpipe_clamps']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
-            {"name": "Kolanka rury spustowej", "quantity": float(r['num_downpipe_elbows']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
-            {"name": "Zaślepki rynny", "quantity": float(r['num_end_caps']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
-        ]
+        system_name = r.get('system_type', 'PVC 125')
         
-        for item in items_to_add:
-            if item["quantity"] > 0:
-                self.cost_items.append(item)
+        if as_set:
+            # Add as single complete set item
+            # Calculate total value (simplified - in real app would use prices from system)
+            item = {
+                "name": f"Komplet orynnowania [{system_name}]",
+                "quantity": 1.0,
+                "unit": "kpl",
+                "price_unit_net": 0.0,
+                "vat_rate": 23,
+                "category": "material",
+                "note": f"System: {system_name}\nRynna: {r['total_gutter_length_m']:.2f}m, Rury: {r['total_downpipe_length_m']:.2f}m"
+            }
+            self.cost_items.append(item)
+        else:
+            # Add detailed items
+            items_to_add = [
+                {"name": f"Rynna {system_name}", "quantity": r['total_gutter_length_m'], "unit": "mb", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
+                {"name": f"Rura spustowa {system_name}", "quantity": r['total_downpipe_length_m'], "unit": "mb", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
+                {"name": "Haki rynnowe", "quantity": float(r['num_gutter_hooks']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
+                {"name": "Łączniki rynny", "quantity": float(r['num_gutter_connectors']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
+                {"name": "Wyloty do rur", "quantity": float(r['num_downpipe_outlets']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
+                {"name": "Obejmy rury spustowej", "quantity": float(r['num_downpipe_clamps']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
+                {"name": "Kolanka rury spustowej", "quantity": float(r['num_downpipe_elbows']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
+                {"name": "Zaślepki rynny", "quantity": float(r['num_end_caps']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
+            ]
+            
+            # Add optional elements if present
+            if r['num_corners_internal'] > 0:
+                items_to_add.append({"name": "Narożniki wewnętrzne", "quantity": float(r['num_corners_internal']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"})
+            if r['num_corners_external'] > 0:
+                items_to_add.append({"name": "Narożniki zewnętrzne", "quantity": float(r['num_corners_external']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"})
+            if r['num_end_caps_left'] > 0:
+                items_to_add.append({"name": "Zaślepki lewe", "quantity": float(r['num_end_caps_left']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"})
+            if r['num_end_caps_right'] > 0:
+                items_to_add.append({"name": "Zaślepki prawe", "quantity": float(r['num_end_caps_right']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"})
+            if r['num_funnels'] > 0:
+                items_to_add.append({"name": "Lejki/wpusty", "quantity": float(r['num_funnels']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"})
+            
+            for item in items_to_add:
+                if item["quantity"] > 0:
+                    self.cost_items.append(item)
         
         self._refresh_cost_ui()
-        messagebox.showinfo("Dodano", "Elementy orynnowania dodane do kosztorysu. Uzupełnij ceny jednostkowe.")
+        mode_text = "jako komplet" if as_set else "szczegółowo"
+        messagebox.showinfo("Dodano", f"Elementy orynnowania dodane {mode_text} do kosztorysu. Uzupełnij ceny jednostkowe.")
     
     # chimney tab (Kominy)
     def create_chimney_tab(self):
