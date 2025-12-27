@@ -243,6 +243,130 @@ class MaterialEditDialog(simpledialog.Dialog):
     def apply(self):
         self.result = {"name": self.e_name.get().strip(), "unit": self.e_unit.get().strip(), "price_unit_net": float(self.e_price.get().replace(",",".") or 0.0), "vat_rate": int(self.vat_cb.get() or 23), "category": self.cat_cb.get() or "material"}
 
+class CompanyEditDialog(simpledialog.Dialog):
+    def __init__(self,parent,title,profile=None):
+        self.profile = profile or {}
+        super().__init__(parent,title)
+    def body(self,master):
+        ttk.Label(master, text="Nazwa profilu:").grid(row=0,column=0,sticky="w")
+        self.e_profile_name = ttk.Entry(master, width=60); self.e_profile_name.grid(row=0,column=1,pady=2)
+        ttk.Label(master, text="Nazwa firmy:").grid(row=1,column=0,sticky="w")
+        self.e_company_name = ttk.Entry(master, width=60); self.e_company_name.grid(row=1,column=1,pady=2)
+        ttk.Label(master, text="Adres:").grid(row=2,column=0,sticky="w")
+        self.e_address = ttk.Entry(master, width=60); self.e_address.grid(row=2,column=1,pady=2)
+        ttk.Label(master, text="NIP:").grid(row=3,column=0,sticky="w")
+        self.e_nip = ttk.Entry(master, width=60); self.e_nip.grid(row=3,column=1,pady=2)
+        ttk.Label(master, text="Telefon:").grid(row=4,column=0,sticky="w")
+        self.e_phone = ttk.Entry(master, width=60); self.e_phone.grid(row=4,column=1,pady=2)
+        ttk.Label(master, text="E-mail:").grid(row=5,column=0,sticky="w")
+        self.e_email = ttk.Entry(master, width=60); self.e_email.grid(row=5,column=1,pady=2)
+        ttk.Label(master, text="Nr konta:").grid(row=6,column=0,sticky="w")
+        self.e_account = ttk.Entry(master, width=60); self.e_account.grid(row=6,column=1,pady=2)
+        if self.profile:
+            self.e_profile_name.insert(0,self.profile.get("profile_name",""))
+            self.e_company_name.insert(0,self.profile.get("company_name",""))
+            self.e_address.insert(0,self.profile.get("company_address",""))
+            self.e_nip.insert(0,self.profile.get("company_nip",""))
+            self.e_phone.insert(0,self.profile.get("company_phone",""))
+            self.e_email.insert(0,self.profile.get("company_email",""))
+            self.e_account.insert(0,self.profile.get("company_account",""))
+        return self.e_profile_name
+    def apply(self):
+        self.result = {
+            "profile_name": self.e_profile_name.get().strip(),
+            "company_name": self.e_company_name.get().strip(),
+            "company_address": self.e_address.get().strip(),
+            "company_nip": self.e_nip.get().strip(),
+            "company_phone": self.e_phone.get().strip(),
+            "company_email": self.e_email.get().strip(),
+            "company_account": self.e_account.get().strip(),
+            "logo": self.profile.get("logo","")
+        }
+
+class CompanyProfilesDialog(tk.Toplevel):
+    def __init__(self, parent, profiles_path):
+        super().__init__(parent)
+        self.title("Profile firmy")
+        self.geometry("700x500")
+        self.profiles_path = profiles_path
+        self.selected_profile = None
+        self.profiles = self._load_profiles()
+        
+        # List of profiles
+        list_frame = ttk.Frame(self)
+        list_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        self.listbox = tk.Listbox(list_frame)
+        self.listbox.pack(side="left", fill="both", expand=True)
+        scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=self.listbox.yview)
+        scrollbar.pack(side="right", fill="y")
+        self.listbox.config(yscrollcommand=scrollbar.set)
+        
+        # Buttons
+        btn_frame = ttk.Frame(self)
+        btn_frame.pack(fill="x", padx=10, pady=10)
+        ttk.Button(btn_frame, text="Nowy profil", command=self._add_profile).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Edytuj", command=self._edit_profile).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Usuń", command=self._delete_profile).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Wczytaj i zamknij", command=self._select_and_close).pack(side="right", padx=4)
+        
+        self._populate_list()
+        
+    def _load_profiles(self):
+        if os.path.exists(self.profiles_path):
+            try:
+                with open(self.profiles_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                return []
+        return []
+    
+    def _save_profiles(self):
+        try:
+            with open(self.profiles_path, "w", encoding="utf-8") as f:
+                json.dump(self.profiles, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            messagebox.showerror("Błąd", f"Nie udało się zapisać profili:\n{e}")
+    
+    def _populate_list(self):
+        self.listbox.delete(0, tk.END)
+        for p in self.profiles:
+            self.listbox.insert(tk.END, p.get("profile_name", ""))
+    
+    def _add_profile(self):
+        dlg = CompanyEditDialog(self, "Nowy profil")
+        if getattr(dlg, "result", None):
+            self.profiles.append(dlg.result)
+            self._save_profiles()
+            self._populate_list()
+    
+    def _edit_profile(self):
+        sel = self.listbox.curselection()
+        if not sel:
+            messagebox.showwarning("Brak zaznaczenia", "Wybierz profil do edycji")
+            return
+        idx = sel[0]
+        dlg = CompanyEditDialog(self, "Edytuj profil", self.profiles[idx])
+        if getattr(dlg, "result", None):
+            self.profiles[idx] = dlg.result
+            self._save_profiles()
+            self._populate_list()
+    
+    def _delete_profile(self):
+        sel = self.listbox.curselection()
+        if not sel:
+            return
+        if messagebox.askyesno("Usuń", "Usunąć wybrany profil?"):
+            del self.profiles[sel[0]]
+            self._save_profiles()
+            self._populate_list()
+    
+    def _select_and_close(self):
+        sel = self.listbox.curselection()
+        if sel:
+            self.selected_profile = self.profiles[sel[0]]
+        self.destroy()
+
 # ---------------- Main App ----------------
 class RoofCalculatorApp:
     def __init__(self, master):
@@ -500,46 +624,149 @@ class RoofCalculatorApp:
         self.roof_area.set(f"{total:.2f}")
         messagebox.showinfo("Przeniesiono", f"Powierzchnia {total:.2f} m² przeniesiona do metrażu dachu.")
     
-    # gutter tab (Orynnowanie)
+    # gutter tab (Orynnowanie) - Enhanced with system selection and manual quantities
     def create_gutter_tab(self):
         if not GUTTER_AVAILABLE:
             return
         self.gutter_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.gutter_frame, text="Orynnowanie")
         
-        input_frame = ttk.LabelFrame(self.gutter_frame, text="Parametry orynnowania")
+        # Import GUTTER_SYSTEMS
+        from gutter_calculations import GUTTER_SYSTEMS
+        
+        # System selection frame
+        system_frame = ttk.LabelFrame(self.gutter_frame, text="System orynnowania")
+        system_frame.pack(fill="x", padx=10, pady=8)
+        
+        ttk.Label(system_frame, text="Wybierz system:").grid(row=0, column=0, sticky="w", padx=4, pady=4)
+        self.gutter_system = ttk.Combobox(system_frame, values=list(GUTTER_SYSTEMS.keys()), width=20, state="readonly")
+        self.gutter_system.set("PVC 125")
+        self.gutter_system.grid(row=0, column=1, padx=4, pady=4, sticky="w")
+        ttk.Button(system_frame, text="Zarządzaj cenami systemów", command=self._manage_gutter_prices).grid(row=0, column=2, padx=4, pady=4)
+        
+        # Basic parameters frame
+        input_frame = ttk.LabelFrame(self.gutter_frame, text="Parametry podstawowe")
         input_frame.pack(fill="x", padx=10, pady=8)
         
-        # Input fields
         row = 0
         ttk.Label(input_frame, text="Długość okapu [m]:").grid(row=row, column=0, sticky="w", padx=4, pady=4)
         self.gutter_okap_length = ttk.Entry(input_frame, width=12)
         self.gutter_okap_length.grid(row=row, column=1, padx=4, pady=4, sticky="w")
-        row += 1
         
-        ttk.Label(input_frame, text="Wysokość dachu (rura spustowa) [m]:").grid(row=row, column=0, sticky="w", padx=4, pady=4)
+        ttk.Label(input_frame, text="Wysokość dachu (rura spustowa) [m]:").grid(row=row, column=2, sticky="w", padx=4, pady=4)
         self.gutter_roof_height = ttk.Entry(input_frame, width=12)
-        self.gutter_roof_height.grid(row=row, column=1, padx=4, pady=4, sticky="w")
+        self.gutter_roof_height.grid(row=row, column=3, padx=4, pady=4, sticky="w")
         row += 1
         
         ttk.Label(input_frame, text="Liczba rur spustowych (opcjonalnie):").grid(row=row, column=0, sticky="w", padx=4, pady=4)
         self.gutter_num_downpipes = ttk.Entry(input_frame, width=12)
         self.gutter_num_downpipes.grid(row=row, column=1, padx=4, pady=4, sticky="w")
-        row += 1
         
-        ttk.Button(input_frame, text="Oblicz orynnowanie", command=self._calculate_guttering).grid(row=row, column=0, columnspan=2, pady=8)
+        # Manual quantities frame
+        manual_frame = ttk.LabelFrame(self.gutter_frame, text="Ręczne ilości elementów (opcjonalne)")
+        manual_frame.pack(fill="x", padx=10, pady=8)
+        
+        self.gutter_manual_vars = {}
+        manual_elements = [
+            ("Kolanka", "elbows", 0),
+            ("Trójniki", "tees", 0),
+            ("Narożniki wewnętrzne", "corners_internal", 0),
+            ("Narożniki zewnętrzne", "corners_external", 0),
+            ("Zaślepki lewe", "end_caps_left", 0),
+            ("Zaślepki prawe", "end_caps_right", 0),
+            ("Lejki/wpusty", "funnels", 0),
+        ]
+        
+        row = 0
+        col = 0
+        for label, key, default in manual_elements:
+            ttk.Label(manual_frame, text=f"{label}:").grid(row=row, column=col*2, sticky="w", padx=4, pady=2)
+            var = tk.StringVar(value=str(default))
+            self.gutter_manual_vars[key] = var
+            ttk.Entry(manual_frame, textvariable=var, width=8).grid(row=row, column=col*2+1, padx=4, pady=2, sticky="w")
+            col += 1
+            if col >= 2:
+                col = 0
+                row += 1
+        
+        # Calculate button
+        btn_frame = ttk.Frame(self.gutter_frame)
+        btn_frame.pack(fill="x", padx=10, pady=8)
+        ttk.Button(btn_frame, text="Oblicz orynnowanie", command=self._calculate_guttering).pack(side="left", padx=4)
         
         # Results frame
         results_frame = ttk.LabelFrame(self.gutter_frame, text="Wyniki obliczeń")
         results_frame.pack(fill="both", expand=True, padx=10, pady=8)
         
-        self.gutter_results_text = tk.Text(results_frame, height=12, state="disabled")
+        self.gutter_results_text = tk.Text(results_frame, height=14, state="disabled")
         self.gutter_results_text.pack(fill="both", expand=True, padx=4, pady=4)
         
-        # Button to transfer to cost estimate
-        ttk.Button(self.gutter_frame, text="Dodaj do kosztorysu", command=self._add_guttering_to_cost).pack(pady=8)
+        # Add to cost estimate buttons
+        add_frame = ttk.Frame(self.gutter_frame)
+        add_frame.pack(fill="x", padx=10, pady=8)
+        ttk.Button(add_frame, text="Dodaj jako komplet", command=lambda: self._add_guttering_to_cost(as_set=True)).pack(side="left", padx=4)
+        ttk.Button(add_frame, text="Dodaj szczegółowo", command=lambda: self._add_guttering_to_cost(as_set=False)).pack(side="left", padx=4)
         
         self.gutter_last_results = None
+    
+    def _manage_gutter_prices(self):
+        """Dialog for managing gutter system prices"""
+        from gutter_calculations import GUTTER_SYSTEMS, save_gutter_system_prices, load_gutter_system_prices
+        
+        dlg = tk.Toplevel(self.master)
+        dlg.title("Zarządzanie cenami systemów orynnowania")
+        dlg.geometry("600x400")
+        
+        # Load current prices
+        prices_path = self._local_db_path("gutter_systems.json")
+        systems = load_gutter_system_prices(prices_path)
+        
+        # Create treeview for editing
+        frame = ttk.Frame(dlg)
+        frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        cols = ("system", "price")
+        tree = ttk.Treeview(frame, columns=cols, show="headings", selectmode="browse")
+        tree.heading("system", text="System")
+        tree.heading("price", text="Cena za mb [zł]")
+        tree.column("system", width=300)
+        tree.column("price", width=150)
+        tree.pack(fill="both", expand=True)
+        
+        # Populate tree
+        def populate():
+            for iid in tree.get_children():
+                tree.delete(iid)
+            for sys_name, sys_data in systems.items():
+                tree.insert("", "end", iid=sys_name, values=(sys_name, f"{sys_data.get('price_per_meter', 0.0):.2f}"))
+        
+        populate()
+        
+        # Edit price function
+        def edit_price():
+            sel = tree.selection()
+            if not sel:
+                messagebox.showwarning("Brak zaznaczenia", "Wybierz system do edycji")
+                return
+            sys_name = sel[0]
+            current_price = systems[sys_name].get("price_per_meter", 0.0)
+            new_price = simpledialog.askfloat("Edycja ceny", f"Podaj nową cenę za mb dla {sys_name}:", initialvalue=current_price, minvalue=0.0)
+            if new_price is not None:
+                systems[sys_name]["price_per_meter"] = new_price
+                populate()
+        
+        # Buttons
+        btn_frame = ttk.Frame(dlg)
+        btn_frame.pack(fill="x", padx=10, pady=10)
+        ttk.Button(btn_frame, text="Edytuj cenę", command=edit_price).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Zapisz i zamknij", command=lambda: save_and_close()).pack(side="right", padx=4)
+        
+        def save_and_close():
+            save_gutter_system_prices(prices_path, systems)
+            messagebox.showinfo("Zapisano", "Ceny systemów zapisane")
+            dlg.destroy()
+        
+        tree.bind("<Double-1>", lambda e: edit_price())
     
     def _calculate_guttering(self):
         try:
@@ -547,12 +774,24 @@ class RoofCalculatorApp:
             roof_height = float(self.gutter_roof_height.get() or 0)
             num_downpipes_str = self.gutter_num_downpipes.get().strip()
             num_downpipes = int(num_downpipes_str) if num_downpipes_str else None
+            system_type = self.gutter_system.get()
             
-            results = calculate_guttering(okap_length, roof_height, num_downpipes)
+            # Collect manual quantities
+            manual_quantities = {}
+            for key, var in self.gutter_manual_vars.items():
+                try:
+                    val = int(var.get() or 0)
+                    if val > 0:
+                        manual_quantities[key] = val
+                except Exception:
+                    pass
+            
+            results = calculate_guttering(okap_length, roof_height, num_downpipes, manual_quantities, system_type)
             self.gutter_last_results = results
             
             text = f"""Wyniki obliczeń orynnowania:
-            
+System: {system_type}
+
 Długość rynny: {results['total_gutter_length_m']:.2f} m
 Długość rur spustowych: {results['total_downpipe_length_m']:.2f} m
 Liczba rur spustowych: {results['num_downpipes']}
@@ -563,6 +802,17 @@ Obejmy rury spustowej: {results['num_downpipe_clamps']} szt.
 Kolanka rury spustowej: {results['num_downpipe_elbows']} szt.
 Zaślepki: {results['num_end_caps']} szt.
 """
+            if results['num_corners_internal'] > 0:
+                text += f"Narożniki wewnętrzne: {results['num_corners_internal']} szt.\n"
+            if results['num_corners_external'] > 0:
+                text += f"Narożniki zewnętrzne: {results['num_corners_external']} szt.\n"
+            if results['num_end_caps_left'] > 0:
+                text += f"Zaślepki lewe: {results['num_end_caps_left']} szt.\n"
+            if results['num_end_caps_right'] > 0:
+                text += f"Zaślepki prawe: {results['num_end_caps_right']} szt.\n"
+            if results['num_funnels'] > 0:
+                text += f"Lejki/wpusty: {results['num_funnels']} szt.\n"
+            
             self.gutter_results_text.config(state="normal")
             self.gutter_results_text.delete("1.0", "end")
             self.gutter_results_text.insert("end", text)
@@ -573,29 +823,59 @@ Zaślepki: {results['num_end_caps']} szt.
         except Exception as e:
             messagebox.showerror("Błąd", f"Wystąpił błąd: {e}")
     
-    def _add_guttering_to_cost(self):
+    def _add_guttering_to_cost(self, as_set=False):
         if not self.gutter_last_results:
             messagebox.showwarning("Brak danych", "Najpierw wykonaj obliczenia orynnowania.")
             return
         
         r = self.gutter_last_results
-        items_to_add = [
-            {"name": "Rynna", "quantity": r['total_gutter_length_m'], "unit": "mb", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
-            {"name": "Rura spustowa", "quantity": r['total_downpipe_length_m'], "unit": "mb", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
-            {"name": "Haki rynnowe", "quantity": float(r['num_gutter_hooks']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
-            {"name": "Łączniki rynny", "quantity": float(r['num_gutter_connectors']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
-            {"name": "Wyloty do rur", "quantity": float(r['num_downpipe_outlets']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
-            {"name": "Obejmy rury spustowej", "quantity": float(r['num_downpipe_clamps']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
-            {"name": "Kolanka rury spustowej", "quantity": float(r['num_downpipe_elbows']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
-            {"name": "Zaślepki rynny", "quantity": float(r['num_end_caps']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
-        ]
+        system_name = r.get('system_type', 'PVC 125')
         
-        for item in items_to_add:
-            if item["quantity"] > 0:
-                self.cost_items.append(item)
+        if as_set:
+            # Add as single complete set item
+            # Calculate total value (simplified - in real app would use prices from system)
+            item = {
+                "name": f"Komplet orynnowania [{system_name}]",
+                "quantity": 1.0,
+                "unit": "kpl",
+                "price_unit_net": 0.0,
+                "vat_rate": 23,
+                "category": "material",
+                "note": f"System: {system_name}\nRynna: {r['total_gutter_length_m']:.2f}m, Rury: {r['total_downpipe_length_m']:.2f}m"
+            }
+            self.cost_items.append(item)
+        else:
+            # Add detailed items
+            items_to_add = [
+                {"name": f"Rynna {system_name}", "quantity": r['total_gutter_length_m'], "unit": "mb", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
+                {"name": f"Rura spustowa {system_name}", "quantity": r['total_downpipe_length_m'], "unit": "mb", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
+                {"name": "Haki rynnowe", "quantity": float(r['num_gutter_hooks']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
+                {"name": "Łączniki rynny", "quantity": float(r['num_gutter_connectors']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
+                {"name": "Wyloty do rur", "quantity": float(r['num_downpipe_outlets']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
+                {"name": "Obejmy rury spustowej", "quantity": float(r['num_downpipe_clamps']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
+                {"name": "Kolanka rury spustowej", "quantity": float(r['num_downpipe_elbows']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
+                {"name": "Zaślepki rynny", "quantity": float(r['num_end_caps']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"},
+            ]
+            
+            # Add optional elements if present
+            if r['num_corners_internal'] > 0:
+                items_to_add.append({"name": "Narożniki wewnętrzne", "quantity": float(r['num_corners_internal']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"})
+            if r['num_corners_external'] > 0:
+                items_to_add.append({"name": "Narożniki zewnętrzne", "quantity": float(r['num_corners_external']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"})
+            if r['num_end_caps_left'] > 0:
+                items_to_add.append({"name": "Zaślepki lewe", "quantity": float(r['num_end_caps_left']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"})
+            if r['num_end_caps_right'] > 0:
+                items_to_add.append({"name": "Zaślepki prawe", "quantity": float(r['num_end_caps_right']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"})
+            if r['num_funnels'] > 0:
+                items_to_add.append({"name": "Lejki/wpusty", "quantity": float(r['num_funnels']), "unit": "szt.", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"})
+            
+            for item in items_to_add:
+                if item["quantity"] > 0:
+                    self.cost_items.append(item)
         
         self._refresh_cost_ui()
-        messagebox.showinfo("Dodano", "Elementy orynnowania dodane do kosztorysu. Uzupełnij ceny jednostkowe.")
+        mode_text = "jako komplet" if as_set else "szczegółowo"
+        messagebox.showinfo("Dodano", f"Elementy orynnowania dodane {mode_text} do kosztorysu. Uzupełnij ceny jednostkowe.")
     
     # chimney tab (Kominy)
     def create_chimney_tab(self):
@@ -720,54 +1000,94 @@ Powierzchnia siatki z klejem: {results.get('total_mesh_surface_m2', 0):.2f} m²
         self._refresh_cost_ui()
         messagebox.showinfo("Dodano", "Elementy obróbki komina dodane do kosztorysu. Uzupełnij ceny jednostkowe.")
     
-    # flashing tab (Obróbki)
+    # flashing tab (Obróbki) - Enhanced with custom definitions and materials
     def create_flashing_tab(self):
         if not FLASHING_AVAILABLE:
             return
         self.flashing_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.flashing_frame, text="Obróbki")
         
-        input_frame = ttk.LabelFrame(self.flashing_frame, text="Lista obróbek blacharskich")
-        input_frame.pack(fill="x", padx=10, pady=8)
+        # Import flashing definitions
+        try:
+            from flashing_definitions import FlashingDefinitionsManager, FLASHING_MATERIALS, PREDEFINED_FLASHINGS
+            self.flashing_manager = FlashingDefinitionsManager(self._local_db_path("flashing_definitions.json"))
+        except Exception:
+            messagebox.showerror("Błąd", "Nie można załadować modułu definicji obróbek")
+            return
         
-        # Define flashing types
+        # Management toolbar
+        toolbar = ttk.Frame(self.flashing_frame)
+        toolbar.pack(fill="x", padx=10, pady=8)
+        ttk.Button(toolbar, text="Zarządzaj definicjami obróbek", command=self._manage_flashing_definitions).pack(side="left", padx=4)
+        ttk.Button(toolbar, text="Kalkulator długości", command=self._open_length_calculator).pack(side="left", padx=4)
+        
+        # Material selection
+        material_frame = ttk.LabelFrame(self.flashing_frame, text="Materiał")
+        material_frame.pack(fill="x", padx=10, pady=8)
+        ttk.Label(material_frame, text="Wybierz materiał:").grid(row=0, column=0, sticky="w", padx=4, pady=4)
+        self.flashing_material = ttk.Combobox(material_frame, values=[FLASHING_MATERIALS[k]["name"] for k in FLASHING_MATERIALS], width=20, state="readonly")
+        self.flashing_material.set(FLASHING_MATERIALS["blacha_powlekana"]["name"])
+        self.flashing_material.grid(row=0, column=1, padx=4, pady=4, sticky="w")
+        ttk.Label(material_frame, text="Cena bazowa [zł/m²]:").grid(row=0, column=2, sticky="w", padx=4, pady=4)
+        self.flashing_base_price = ttk.Entry(material_frame, width=10)
+        self.flashing_base_price.insert(0, "0.00")
+        self.flashing_base_price.grid(row=0, column=3, padx=4, pady=4, sticky="w")
+        
+        # Flashing list frame (scrollable)
+        list_frame = ttk.LabelFrame(self.flashing_frame, text="Lista obróbek")
+        list_frame.pack(fill="both", expand=True, padx=10, pady=8)
+        
+        # Create canvas with scrollbar for many flashings
+        canvas = tk.Canvas(list_frame, height=200)
+        scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Populate flashings
         self.flashing_items_vars = {}
-        flashing_types = [
-            ("Gąsiory", "gasior"),
-            ("Wiatrownice", "wiatrownica"),
-            ("Kosze dachowe", "kosz"),
-            ("Obróbka okapu", "okap"),
-            ("Obróbka ściany (gurt)", "gurt"),
-            ("Pas nadrynnowy", "pas_nadrynnowy"),
-            ("Pas podrynnowy", "pas_podrynnowy"),
-        ]
+        all_flashings = self.flashing_manager.get_all_flashings()
         
         row = 0
-        ttk.Label(input_frame, text="Nazwa").grid(row=row, column=0, padx=4, pady=2, sticky="w")
-        ttk.Label(input_frame, text="Zaznacz").grid(row=row, column=1, padx=4, pady=2)
-        ttk.Label(input_frame, text="Długość [m]").grid(row=row, column=2, padx=4, pady=2)
-        ttk.Label(input_frame, text="Szer. rozw. [m]").grid(row=row, column=3, padx=4, pady=2)
+        ttk.Label(scrollable_frame, text="Nazwa", font=("Arial", 9, "bold")).grid(row=row, column=0, padx=4, pady=2, sticky="w")
+        ttk.Label(scrollable_frame, text="Użyj", font=("Arial", 9, "bold")).grid(row=row, column=1, padx=4, pady=2)
+        ttk.Label(scrollable_frame, text="Długość [m]", font=("Arial", 9, "bold")).grid(row=row, column=2, padx=4, pady=2)
+        ttk.Label(scrollable_frame, text="Szer. rozw. [m]", font=("Arial", 9, "bold")).grid(row=row, column=3, padx=4, pady=2)
         row += 1
         
-        for name, key in flashing_types:
+        for key, flashing in all_flashings.items():
             self.flashing_items_vars[key] = {
                 "selected": tk.BooleanVar(value=False),
                 "length": tk.StringVar(value="0"),
-                "width": tk.StringVar(value="0.33"),
+                "width": tk.StringVar(value=str(flashing.get("default_width_m", 0.33))),
+                "name": flashing.get("name", key)
             }
-            ttk.Label(input_frame, text=name).grid(row=row, column=0, padx=4, pady=2, sticky="w")
-            ttk.Checkbutton(input_frame, variable=self.flashing_items_vars[key]["selected"]).grid(row=row, column=1, padx=4, pady=2)
-            ttk.Entry(input_frame, textvariable=self.flashing_items_vars[key]["length"], width=10).grid(row=row, column=2, padx=4, pady=2)
-            ttk.Entry(input_frame, textvariable=self.flashing_items_vars[key]["width"], width=10).grid(row=row, column=3, padx=4, pady=2)
+            ttk.Label(scrollable_frame, text=flashing.get("name", key)).grid(row=row, column=0, padx=4, pady=2, sticky="w")
+            ttk.Checkbutton(scrollable_frame, variable=self.flashing_items_vars[key]["selected"]).grid(row=row, column=1, padx=4, pady=2)
+            ttk.Entry(scrollable_frame, textvariable=self.flashing_items_vars[key]["length"], width=10).grid(row=row, column=2, padx=4, pady=2)
+            ttk.Entry(scrollable_frame, textvariable=self.flashing_items_vars[key]["width"], width=10).grid(row=row, column=3, padx=4, pady=2)
             row += 1
         
-        ttk.Button(input_frame, text="Oblicz obróbki", command=self._calculate_flashings).grid(row=row, column=0, columnspan=4, pady=8)
+        # Calculate button
+        btn_frame = ttk.Frame(self.flashing_frame)
+        btn_frame.pack(fill="x", padx=10, pady=8)
+        ttk.Button(btn_frame, text="Oblicz obróbki", command=self._calculate_flashings).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Odśwież listę", command=self._refresh_flashing_list).pack(side="left", padx=4)
         
         # Results frame
         results_frame = ttk.LabelFrame(self.flashing_frame, text="Wyniki obliczeń")
-        results_frame.pack(fill="both", expand=True, padx=10, pady=8)
+        results_frame.pack(fill="x", padx=10, pady=8)
         
-        self.flashing_results_text = tk.Text(results_frame, height=8, state="disabled")
+        self.flashing_results_text = tk.Text(results_frame, height=6, state="disabled")
         self.flashing_results_text.pack(fill="both", expand=True, padx=4, pady=4)
         
         # Button to transfer to cost estimate
@@ -775,20 +1095,158 @@ Powierzchnia siatki z klejem: {results.get('total_mesh_surface_m2', 0):.2f} m²
         
         self.flashing_last_results = None
     
+    def _refresh_flashing_list(self):
+        """Refresh the flashing list after modifications"""
+        # This would recreate the flashing tab - simplified version just shows message
+        messagebox.showinfo("Odśwież", "Przejdź do innej zakładki i wróć, aby odświeżyć listę obróbek")
+    
+    def _manage_flashing_definitions(self):
+        """Dialog for managing custom flashing definitions"""
+        from flashing_definitions import FLASHING_MATERIALS
+        
+        dlg = tk.Toplevel(self.master)
+        dlg.title("Zarządzanie definicjami obróbek")
+        dlg.geometry("800x500")
+        
+        # List of flashings
+        list_frame = ttk.Frame(dlg)
+        list_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        cols = ("name", "width", "material", "custom")
+        tree = ttk.Treeview(list_frame, columns=cols, show="headings", selectmode="browse")
+        tree.heading("name", text="Nazwa")
+        tree.heading("width", text="Szerokość rozwoju [m]")
+        tree.heading("material", text="Materiał")
+        tree.heading("custom", text="Własna?")
+        tree.column("name", width=250)
+        tree.column("width", width=150)
+        tree.column("material", width=200)
+        tree.column("custom", width=100)
+        tree.pack(fill="both", expand=True)
+        
+        def populate():
+            for iid in tree.get_children():
+                tree.delete(iid)
+            all_flashings = self.flashing_manager.get_all_flashings()
+            for key, flashing in all_flashings.items():
+                is_custom = "Tak" if self.flashing_manager.is_custom(key) else "Nie"
+                material_key = flashing.get("material", "blacha_powlekana")
+                material_name = FLASHING_MATERIALS.get(material_key, {}).get("name", material_key)
+                tree.insert("", "end", iid=key, values=(
+                    flashing.get("name", key),
+                    f"{flashing.get('default_width_m', 0.33):.2f}",
+                    material_name,
+                    is_custom
+                ))
+        
+        populate()
+        
+        # Buttons
+        btn_frame = ttk.Frame(dlg)
+        btn_frame.pack(fill="x", padx=10, pady=10)
+        ttk.Button(btn_frame, text="Dodaj własną", command=lambda: add_custom()).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Edytuj", command=lambda: edit_flashing()).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Usuń własną", command=lambda: delete_custom()).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Zamknij", command=dlg.destroy).pack(side="right", padx=4)
+        
+        def add_custom():
+            edit_dlg = FlashingEditDialog(dlg, "Nowa obróbka")
+            if getattr(edit_dlg, "result", None):
+                result = edit_dlg.result
+                key = result["name"].lower().replace(" ", "_")
+                self.flashing_manager.add_custom_flashing(key, result)
+                populate()
+        
+        def edit_flashing():
+            sel = tree.selection()
+            if not sel:
+                messagebox.showwarning("Brak zaznaczenia", "Wybierz obróbkę")
+                return
+            key = sel[0]
+            all_flashings = self.flashing_manager.get_all_flashings()
+            flashing = all_flashings.get(key)
+            if flashing:
+                edit_dlg = FlashingEditDialog(dlg, "Edytuj obróbkę", flashing)
+                if getattr(edit_dlg, "result", None):
+                    self.flashing_manager.add_custom_flashing(key, edit_dlg.result)
+                    populate()
+        
+        def delete_custom():
+            sel = tree.selection()
+            if not sel:
+                return
+            key = sel[0]
+            if not self.flashing_manager.is_custom(key):
+                messagebox.showwarning("Błąd", "Nie można usunąć predefiniowanej obróbki")
+                return
+            if messagebox.askyesno("Usuń", "Usunąć własną obróbkę?"):
+                self.flashing_manager.delete_custom_flashing(key)
+                populate()
+        
+        tree.bind("<Double-1>", lambda e: edit_flashing())
+    
+    def _open_length_calculator(self):
+        """Simple length calculator dialog"""
+        dlg = tk.Toplevel(self.master)
+        dlg.title("Kalkulator długości")
+        dlg.geometry("400x300")
+        
+        ttk.Label(dlg, text="Wprowadź wymiary do obliczenia długości:").pack(padx=10, pady=10)
+        
+        frame = ttk.Frame(dlg)
+        frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        dimensions = []
+        for i in range(5):
+            ttk.Label(frame, text=f"Odcinek {i+1} [m]:").grid(row=i, column=0, sticky="w", padx=4, pady=4)
+            entry = ttk.Entry(frame, width=15)
+            entry.grid(row=i, column=1, padx=4, pady=4)
+            entry.insert(0, "0")
+            dimensions.append(entry)
+        
+        result_label = ttk.Label(frame, text="Suma: 0.00 m", font=("Arial", 10, "bold"))
+        result_label.grid(row=6, column=0, columnspan=2, pady=10)
+        
+        def calculate():
+            total = 0.0
+            for entry in dimensions:
+                try:
+                    val = float(entry.get().replace(",", ".") or 0)
+                    total += val
+                except Exception:
+                    pass
+            result_label.config(text=f"Suma: {total:.2f} m")
+        
+        ttk.Button(frame, text="Oblicz", command=calculate).grid(row=7, column=0, columnspan=2, pady=10)
+        ttk.Button(dlg, text="Zamknij", command=dlg.destroy).pack(pady=10)
+    
     def _calculate_flashings(self):
         try:
+            from flashing_definitions import FLASHING_MATERIALS
+            
             flashing_items = {}
             for key, vars_dict in self.flashing_items_vars.items():
                 flashing_items[key] = {
                     "selected": vars_dict["selected"].get(),
                     "length": float(vars_dict["length"].get() or 0),
                     "width": float(vars_dict["width"].get() or 0),
+                    "name": vars_dict["name"]
                 }
             
             results = calculate_flashings_total(flashing_items)
+            
+            # Get selected material multiplier
+            selected_material_name = self.flashing_material.get()
+            material_key = next((k for k, v in FLASHING_MATERIALS.items() if v["name"] == selected_material_name), "blacha_powlekana")
+            material_multiplier = FLASHING_MATERIALS[material_key].get("price_multiplier", 1.0)
+            
             self.flashing_last_results = results
+            self.flashing_last_results["material"] = selected_material_name
+            self.flashing_last_results["material_multiplier"] = material_multiplier
+            self.flashing_last_results["items"] = flashing_items
             
             text = f"""Wyniki obliczeń obróbek blacharskich:
+Materiał: {selected_material_name}
 
 Całkowita powierzchnia blachy: {results['total_surface_m2']:.2f} m²
 Liczba arkuszy blachy (1,25x2,5m): {results['num_sheets']} szt.
@@ -798,7 +1256,7 @@ Szczegóły zaznaczonych obróbek:
             for key, data in flashing_items.items():
                 if data["selected"]:
                     area = data["length"] * data["width"]
-                    text += f"  - {key}: {data['length']:.2f} m × {data['width']:.2f} m = {area:.2f} m²\n"
+                    text += f"  - {data['name']}: {data['length']:.2f} m × {data['width']:.2f} m = {area:.2f} m²\n"
             
             self.flashing_results_text.config(state="normal")
             self.flashing_results_text.delete("1.0", "end")
@@ -816,17 +1274,112 @@ Szczegóły zaznaczonych obróbek:
             return
         
         r = self.flashing_last_results
+        material_name = r.get("material", "blacha_powlekana")
+        
         if r['total_surface_m2'] > 0:
-            item = {"name": "Blacha na obróbki", "quantity": r['total_surface_m2'], "unit": "m²", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"}
-            self.cost_items.append(item)
+            # Option to add as single item or detailed
+            choice = messagebox.askyesnocancel("Dodaj obróbki", 
+                "Tak - dodaj jako pojedyncze pozycje\nNie - dodaj jako jeden komplet\nAnuluj - anuluj")
+            
+            if choice is None:  # Cancel
+                return
+            elif choice:  # Yes - detailed
+                for key, data in r.get("items", {}).items():
+                    if data.get("selected", False) and data.get("length", 0) > 0:
+                        area = data["length"] * data["width"]
+                        item = {
+                            "name": f"{data['name']} - {material_name}",
+                            "quantity": area,
+                            "unit": "m²",
+                            "price_unit_net": 0.0,
+                            "vat_rate": 23,
+                            "category": "material"
+                        }
+                        self.cost_items.append(item)
+            else:  # No - as set
+                item = {
+                    "name": f"Obróbki blacharskie - {material_name}",
+                    "quantity": r['total_surface_m2'],
+                    "unit": "m²",
+                    "price_unit_net": 0.0,
+                    "vat_rate": 23,
+                    "category": "material"
+                }
+                self.cost_items.append(item)
+            
             self._refresh_cost_ui()
-            messagebox.showinfo("Dodano", f"Blacha na obróbki ({r['total_surface_m2']:.2f} m²) dodana do kosztorysu. Uzupełnij cenę jednostkową.")
+            messagebox.showinfo("Dodano", "Obróbki dodane do kosztorysu. Uzupełnij ceny jednostkowe.")
         else:
             messagebox.showwarning("Brak danych", "Brak zaznaczonych obróbek do dodania.")
 
-    # cost tab UI (kept similar to previous working version)
+
+class FlashingEditDialog(simpledialog.Dialog):
+    """Dialog for editing flashing definitions"""
+    def __init__(self, parent, title, flashing=None):
+        self.flashing = flashing or {}
+        super().__init__(parent, title)
+    
+    def body(self, master):
+        from flashing_definitions import FLASHING_MATERIALS
+        
+        ttk.Label(master, text="Nazwa:").grid(row=0, column=0, sticky="w", padx=4, pady=4)
+        self.e_name = ttk.Entry(master, width=40)
+        self.e_name.grid(row=0, column=1, padx=4, pady=4)
+        
+        ttk.Label(master, text="Opis:").grid(row=1, column=0, sticky="w", padx=4, pady=4)
+        self.e_description = ttk.Entry(master, width=40)
+        self.e_description.grid(row=1, column=1, padx=4, pady=4)
+        
+        ttk.Label(master, text="Szerokość rozwoju [m]:").grid(row=2, column=0, sticky="w", padx=4, pady=4)
+        self.e_width = ttk.Entry(master, width=15)
+        self.e_width.grid(row=2, column=1, padx=4, pady=4, sticky="w")
+        
+        ttk.Label(master, text="Materiał:").grid(row=3, column=0, sticky="w", padx=4, pady=4)
+        self.material_cb = ttk.Combobox(master, values=list(FLASHING_MATERIALS.keys()), width=20, state="readonly")
+        self.material_cb.grid(row=3, column=1, padx=4, pady=4, sticky="w")
+        
+        ttk.Label(master, text="Cena za mb [zł]:").grid(row=4, column=0, sticky="w", padx=4, pady=4)
+        self.e_price = ttk.Entry(master, width=15)
+        self.e_price.grid(row=4, column=1, padx=4, pady=4, sticky="w")
+        
+        # Fill in existing values
+        if self.flashing:
+            self.e_name.insert(0, self.flashing.get("name", ""))
+            self.e_description.insert(0, self.flashing.get("description", ""))
+            self.e_width.insert(0, str(self.flashing.get("default_width_m", 0.33)))
+            self.material_cb.set(self.flashing.get("material", "blacha_powlekana"))
+            self.e_price.insert(0, str(self.flashing.get("price_per_meter", 0.0)))
+        else:
+            self.e_width.insert(0, "0.33")
+            self.material_cb.set("blacha_powlekana")
+            self.e_price.insert(0, "0.0")
+        
+        return self.e_name
+    
+    def validate(self):
+        if not self.e_name.get().strip():
+            messagebox.showerror("Błąd", "Nazwa jest wymagana")
+            return False
+        try:
+            float(self.e_width.get().replace(",", "."))
+            float(self.e_price.get().replace(",", "."))
+        except Exception:
+            messagebox.showerror("Błąd", "Szerokość i cena muszą być liczbami")
+            return False
+        return True
+    
+    def apply(self):
+        self.result = {
+            "name": self.e_name.get().strip(),
+            "description": self.e_description.get().strip(),
+            "default_width_m": float(self.e_width.get().replace(",", ".")),
+            "material": self.material_cb.get(),
+            "price_per_meter": float(self.e_price.get().replace(",", ".")),
+            "unit": "mb"
+        }
+
+    # cost tab UI with keyboard shortcuts and enhanced UI
     def create_cost_tab(self):
-        # Implementation mirrors main_app043/main_app044 UI layout
         self.cost_tab = ttk.Frame(self.notebook); self.notebook.add(self.cost_tab, text="Kosztorys/Oferta")
         left = ttk.Frame(self.cost_tab); left.pack(side="left", fill="both", expand=True, padx=8, pady=8)
         right_container = ttk.Frame(self.cost_tab, width=420); right_container.pack(side="right", fill="y", padx=8, pady=8)
@@ -841,11 +1394,15 @@ Szczegóły zaznaczonych obróbek:
         ttk.Label(inv_frame, text="Nazwa kosztorysu:").grid(row=1,column=0,sticky="e"); ttk.Entry(inv_frame,width=30,textvariable=self.quote_name).grid(row=1,column=1,columnspan=4,padx=4)
         ttk.Label(inv_frame, text="Data:").grid(row=0,column=5,sticky="e"); ttk.Entry(inv_frame,width=12,textvariable=self.invoice_date).grid(row=0,column=6,padx=4)
 
-        # toolbar
+        # main toolbar (moved buttons here)
         toolbar = ttk.Frame(left); toolbar.pack(fill="x", pady=(0,6))
         ttk.Button(toolbar, text="Oblicz kosztorys", command=self.calculate_cost_estimation).pack(side="left", padx=4)
         ttk.Button(toolbar, text="Eksportuj CSV", command=self.export_cost_csv).pack(side="left", padx=4)
         ttk.Button(toolbar, text="Eksportuj PDF", command=self.export_cost_pdf).pack(side="left", padx=4)
+        ttk.Separator(toolbar, orient="vertical").pack(side="left", fill="y", padx=8)
+        ttk.Button(toolbar, text="Edytuj", command=lambda: self._edit_from_tree_smart()).pack(side="left", padx=4)
+        ttk.Button(toolbar, text="Usuń", command=lambda: self._delete_from_tree_smart()).pack(side="left", padx=4)
+        ttk.Button(toolbar, text="Duplikuj", command=lambda: self._duplicate_item_smart()).pack(side="left", padx=4)
         ttk.Button(toolbar, text="Wstaw z bazy", command=self.manage_materials_db).pack(side="right", padx=4)
         ttk.Button(toolbar, text="Klienci", command=self.manage_clients).pack(side="right", padx=4)
 
@@ -866,31 +1423,25 @@ Szczegóły zaznaczonych obróbek:
         mat_tree_container = ttk.Frame(mat_frame); mat_tree_container.pack(fill="both", expand=True, padx=6, pady=6)
         mat_tree_container.config(height=260)
         mat_cols = ("name","qty","unit","price_net","net")
-        self.mat_tree = ttk.Treeview(mat_tree_container, columns=mat_cols, show="headings", selectmode="browse")
+        self.mat_tree = ttk.Treeview(mat_tree_container, columns=mat_cols, show="headings", selectmode="extended")
         for c,h in zip(mat_cols,("Nazwa","Ilość","JM","Cena netto","Wartość netto")):
             self.mat_tree.heading(c, text=h); self.mat_tree.column(c, width=300 if c=="name" else 80, anchor="w" if c=="name" else "e")
         mat_vscroll = ttk.Scrollbar(mat_tree_container, orient="vertical", command=self.mat_tree.yview)
         self.mat_tree.configure(yscrollcommand=mat_vscroll.set)
         self.mat_tree.pack(side="left", fill="both", expand=True)
         mat_vscroll.pack(side="right", fill="y")
-        mat_btnf = ttk.Frame(mat_frame); mat_btnf.pack(fill="x", padx=6, pady=4)
-        ttk.Button(mat_btnf, text="Edytuj zaznaczoną", command=lambda: self._edit_from_tree("material")).pack(side="left", padx=4)
-        ttk.Button(mat_btnf, text="Usuń zaznaczoną", command=lambda: self._delete_from_tree("material")).pack(side="left", padx=4)
 
         # services tree with scrollbar
         srv_tree_container = ttk.Frame(srv_frame); srv_tree_container.pack(fill="both", expand=True, padx=6, pady=6)
         srv_tree_container.config(height=260)
         srv_cols = ("name","qty","unit","price_net","net")
-        self.srv_tree = ttk.Treeview(srv_tree_container, columns=srv_cols, show="headings", selectmode="browse")
+        self.srv_tree = ttk.Treeview(srv_tree_container, columns=srv_cols, show="headings", selectmode="extended")
         for c,h in zip(srv_cols,("Nazwa","Ilość","JM","Cena netto","Wartość netto")):
             self.srv_tree.heading(c, text=h); self.srv_tree.column(c, width=300 if c=="name" else 80, anchor="w" if c=="name" else "e")
         srv_vscroll = ttk.Scrollbar(srv_tree_container, orient="vertical", command=self.srv_tree.yview)
         self.srv_tree.configure(yscrollcommand=srv_vscroll.set)
         self.srv_tree.pack(side="left", fill="both", expand=True)
         srv_vscroll.pack(side="right", fill="y")
-        srv_btnf = ttk.Frame(srv_frame); srv_btnf.pack(fill="x", padx=6, pady=4)
-        ttk.Button(srv_btnf, text="Edytuj zaznaczoną", command=lambda: self._edit_from_tree("service")).pack(side="left", padx=4)
-        ttk.Button(srv_btnf, text="Usuń zaznaczoną", command=lambda: self._delete_from_tree("service")).pack(side="left", padx=4)
 
         # right panel (add item / client / transport / summary)
         right = ttk.Frame(right_container); right.pack(fill="both", expand=True, padx=4, pady=4)
@@ -918,9 +1469,24 @@ Szczegóły zaznaczonych obróbek:
         ttk.Label(summary_frame, text="Komentarz (umieszczony w PDF):").pack(anchor="w", padx=4, pady=(6,0))
         self.comment_text = tk.Text(summary_frame, height=6); self.comment_text.pack(fill="both", expand=False, padx=4, pady=(0,6))
 
-        # double-click edit bindings
+        # keyboard shortcuts for both trees
+        self.mat_tree.bind("<Delete>", lambda e: self._delete_from_tree_smart())
+        self.mat_tree.bind("<Return>", lambda e: self._edit_from_tree_smart())
+        self.mat_tree.bind("<plus>", lambda e: self._adjust_quantity_smart(1))
+        self.mat_tree.bind("<minus>", lambda e: self._adjust_quantity_smart(-1))
+        self.mat_tree.bind("<Control-d>", lambda e: self._duplicate_item_smart())
         self.mat_tree.bind("<Double-1>", lambda e: self._edit_from_tree("material"))
+        
+        self.srv_tree.bind("<Delete>", lambda e: self._delete_from_tree_smart())
+        self.srv_tree.bind("<Return>", lambda e: self._edit_from_tree_smart())
+        self.srv_tree.bind("<plus>", lambda e: self._adjust_quantity_smart(1))
+        self.srv_tree.bind("<minus>", lambda e: self._adjust_quantity_smart(-1))
+        self.srv_tree.bind("<Control-d>", lambda e: self._duplicate_item_smart())
         self.srv_tree.bind("<Double-1>", lambda e: self._edit_from_tree("service"))
+        
+        # context menus for both trees
+        self.mat_tree.bind("<Button-3>", lambda e: self._show_context_menu(e, "material"))
+        self.srv_tree.bind("<Button-3>", lambda e: self._show_context_menu(e, "service"))
 
         self._refresh_cost_ui()
 
@@ -975,6 +1541,129 @@ Szczegóły zaznaczonych obróbek:
         idx = int(sel[0])
         if not messagebox.askyesno("Usuń","Usunąć pozycję?"): return
         del self.cost_items[idx]; self._refresh_cost_ui()
+    
+    # Smart methods that work with focused tree
+    def _get_focused_tree(self):
+        """Return the currently focused tree (mat_tree or srv_tree) or None"""
+        focus = self.master.focus_get()
+        if focus == self.mat_tree:
+            return self.mat_tree, "material"
+        elif focus == self.srv_tree:
+            return self.srv_tree, "service"
+        return None, None
+    
+    def _edit_from_tree_smart(self):
+        """Edit from whichever tree has focus"""
+        tree, kind = self._get_focused_tree()
+        if tree:
+            self._edit_from_tree(kind)
+    
+    def _delete_from_tree_smart(self):
+        """Delete from whichever tree has focus, supports multiple selection"""
+        tree, kind = self._get_focused_tree()
+        if not tree:
+            return
+        sel = tree.selection()
+        if not sel:
+            messagebox.showwarning("Brak zaznaczenia", "Wybierz pozycję")
+            return
+        
+        if len(sel) == 1:
+            msg = "Usunąć pozycję?"
+        else:
+            msg = f"Usunąć {len(sel)} pozycji?"
+        
+        if not messagebox.askyesno("Usuń", msg):
+            return
+        
+        # Get indices and sort in reverse order to delete from end
+        indices = sorted([int(iid) for iid in sel], reverse=True)
+        for idx in indices:
+            if 0 <= idx < len(self.cost_items):
+                del self.cost_items[idx]
+        
+        self._refresh_cost_ui()
+    
+    def _duplicate_item_smart(self):
+        """Duplicate selected item from whichever tree has focus"""
+        tree, kind = self._get_focused_tree()
+        if not tree:
+            return
+        sel = tree.selection()
+        if not sel:
+            messagebox.showwarning("Brak zaznaczenia", "Wybierz pozycję do duplikacji")
+            return
+        
+        idx = int(sel[0])
+        if 0 <= idx < len(self.cost_items):
+            item_copy = dict(self.cost_items[idx])
+            item_copy["name"] = item_copy.get("name", "") + " (kopia)"
+            self.cost_items.insert(idx + 1, item_copy)
+            self._refresh_cost_ui()
+    
+    def _adjust_quantity_smart(self, delta: float):
+        """Adjust quantity of selected item by delta"""
+        tree, kind = self._get_focused_tree()
+        if not tree:
+            return
+        sel = tree.selection()
+        if not sel:
+            return
+        
+        idx = int(sel[0])
+        if 0 <= idx < len(self.cost_items):
+            item = self.cost_items[idx]
+            current_qty = float(item.get("quantity", 0.0))
+            new_qty = max(0.0, current_qty + delta)  # Don't go below 0
+            item["quantity"] = new_qty
+            self._refresh_cost_ui()
+    
+    def _show_context_menu(self, event, kind: str):
+        """Show context menu on right-click"""
+        tree = self.mat_tree if kind == "material" else self.srv_tree
+        
+        # Select the item under cursor if not already selected
+        item_id = tree.identify_row(event.y)
+        if item_id and item_id not in tree.selection():
+            tree.selection_set(item_id)
+            tree.focus(item_id)
+        
+        if not tree.selection():
+            return
+        
+        menu = tk.Menu(self.master, tearoff=0)
+        menu.add_command(label="Edytuj", command=lambda: self._edit_from_tree(kind))
+        menu.add_command(label="Usuń", command=lambda: self._delete_from_tree_smart())
+        menu.add_command(label="Duplikuj", command=lambda: self._duplicate_item_smart())
+        menu.add_separator()
+        menu.add_command(label="Zwiększ ilość (+1)", command=lambda: self._adjust_quantity_smart(1))
+        menu.add_command(label="Zmniejsz ilość (-1)", command=lambda: self._adjust_quantity_smart(-1))
+        menu.add_separator()
+        
+        # Add move to other category option
+        if kind == "material":
+            menu.add_command(label="Przenieś do usług", command=lambda: self._move_to_category("service"))
+        else:
+            menu.add_command(label="Przenieś do materiałów", command=lambda: self._move_to_category("material"))
+        
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+    
+    def _move_to_category(self, new_category: str):
+        """Move selected item to a different category"""
+        tree, old_kind = self._get_focused_tree()
+        if not tree:
+            return
+        sel = tree.selection()
+        if not sel:
+            return
+        
+        idx = int(sel[0])
+        if 0 <= idx < len(self.cost_items):
+            self.cost_items[idx]["category"] = new_category
+            self._refresh_cost_ui()
 
     # calculation / summary (fix for missing method)
     def calculate_cost_estimation(self):
