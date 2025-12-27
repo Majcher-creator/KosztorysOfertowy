@@ -1000,54 +1000,94 @@ Powierzchnia siatki z klejem: {results.get('total_mesh_surface_m2', 0):.2f} m²
         self._refresh_cost_ui()
         messagebox.showinfo("Dodano", "Elementy obróbki komina dodane do kosztorysu. Uzupełnij ceny jednostkowe.")
     
-    # flashing tab (Obróbki)
+    # flashing tab (Obróbki) - Enhanced with custom definitions and materials
     def create_flashing_tab(self):
         if not FLASHING_AVAILABLE:
             return
         self.flashing_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.flashing_frame, text="Obróbki")
         
-        input_frame = ttk.LabelFrame(self.flashing_frame, text="Lista obróbek blacharskich")
-        input_frame.pack(fill="x", padx=10, pady=8)
+        # Import flashing definitions
+        try:
+            from flashing_definitions import FlashingDefinitionsManager, FLASHING_MATERIALS, PREDEFINED_FLASHINGS
+            self.flashing_manager = FlashingDefinitionsManager(self._local_db_path("flashing_definitions.json"))
+        except Exception:
+            messagebox.showerror("Błąd", "Nie można załadować modułu definicji obróbek")
+            return
         
-        # Define flashing types
+        # Management toolbar
+        toolbar = ttk.Frame(self.flashing_frame)
+        toolbar.pack(fill="x", padx=10, pady=8)
+        ttk.Button(toolbar, text="Zarządzaj definicjami obróbek", command=self._manage_flashing_definitions).pack(side="left", padx=4)
+        ttk.Button(toolbar, text="Kalkulator długości", command=self._open_length_calculator).pack(side="left", padx=4)
+        
+        # Material selection
+        material_frame = ttk.LabelFrame(self.flashing_frame, text="Materiał")
+        material_frame.pack(fill="x", padx=10, pady=8)
+        ttk.Label(material_frame, text="Wybierz materiał:").grid(row=0, column=0, sticky="w", padx=4, pady=4)
+        self.flashing_material = ttk.Combobox(material_frame, values=[FLASHING_MATERIALS[k]["name"] for k in FLASHING_MATERIALS], width=20, state="readonly")
+        self.flashing_material.set(FLASHING_MATERIALS["blacha_powlekana"]["name"])
+        self.flashing_material.grid(row=0, column=1, padx=4, pady=4, sticky="w")
+        ttk.Label(material_frame, text="Cena bazowa [zł/m²]:").grid(row=0, column=2, sticky="w", padx=4, pady=4)
+        self.flashing_base_price = ttk.Entry(material_frame, width=10)
+        self.flashing_base_price.insert(0, "0.00")
+        self.flashing_base_price.grid(row=0, column=3, padx=4, pady=4, sticky="w")
+        
+        # Flashing list frame (scrollable)
+        list_frame = ttk.LabelFrame(self.flashing_frame, text="Lista obróbek")
+        list_frame.pack(fill="both", expand=True, padx=10, pady=8)
+        
+        # Create canvas with scrollbar for many flashings
+        canvas = tk.Canvas(list_frame, height=200)
+        scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Populate flashings
         self.flashing_items_vars = {}
-        flashing_types = [
-            ("Gąsiory", "gasior"),
-            ("Wiatrownice", "wiatrownica"),
-            ("Kosze dachowe", "kosz"),
-            ("Obróbka okapu", "okap"),
-            ("Obróbka ściany (gurt)", "gurt"),
-            ("Pas nadrynnowy", "pas_nadrynnowy"),
-            ("Pas podrynnowy", "pas_podrynnowy"),
-        ]
+        all_flashings = self.flashing_manager.get_all_flashings()
         
         row = 0
-        ttk.Label(input_frame, text="Nazwa").grid(row=row, column=0, padx=4, pady=2, sticky="w")
-        ttk.Label(input_frame, text="Zaznacz").grid(row=row, column=1, padx=4, pady=2)
-        ttk.Label(input_frame, text="Długość [m]").grid(row=row, column=2, padx=4, pady=2)
-        ttk.Label(input_frame, text="Szer. rozw. [m]").grid(row=row, column=3, padx=4, pady=2)
+        ttk.Label(scrollable_frame, text="Nazwa", font=("Arial", 9, "bold")).grid(row=row, column=0, padx=4, pady=2, sticky="w")
+        ttk.Label(scrollable_frame, text="Użyj", font=("Arial", 9, "bold")).grid(row=row, column=1, padx=4, pady=2)
+        ttk.Label(scrollable_frame, text="Długość [m]", font=("Arial", 9, "bold")).grid(row=row, column=2, padx=4, pady=2)
+        ttk.Label(scrollable_frame, text="Szer. rozw. [m]", font=("Arial", 9, "bold")).grid(row=row, column=3, padx=4, pady=2)
         row += 1
         
-        for name, key in flashing_types:
+        for key, flashing in all_flashings.items():
             self.flashing_items_vars[key] = {
                 "selected": tk.BooleanVar(value=False),
                 "length": tk.StringVar(value="0"),
-                "width": tk.StringVar(value="0.33"),
+                "width": tk.StringVar(value=str(flashing.get("default_width_m", 0.33))),
+                "name": flashing.get("name", key)
             }
-            ttk.Label(input_frame, text=name).grid(row=row, column=0, padx=4, pady=2, sticky="w")
-            ttk.Checkbutton(input_frame, variable=self.flashing_items_vars[key]["selected"]).grid(row=row, column=1, padx=4, pady=2)
-            ttk.Entry(input_frame, textvariable=self.flashing_items_vars[key]["length"], width=10).grid(row=row, column=2, padx=4, pady=2)
-            ttk.Entry(input_frame, textvariable=self.flashing_items_vars[key]["width"], width=10).grid(row=row, column=3, padx=4, pady=2)
+            ttk.Label(scrollable_frame, text=flashing.get("name", key)).grid(row=row, column=0, padx=4, pady=2, sticky="w")
+            ttk.Checkbutton(scrollable_frame, variable=self.flashing_items_vars[key]["selected"]).grid(row=row, column=1, padx=4, pady=2)
+            ttk.Entry(scrollable_frame, textvariable=self.flashing_items_vars[key]["length"], width=10).grid(row=row, column=2, padx=4, pady=2)
+            ttk.Entry(scrollable_frame, textvariable=self.flashing_items_vars[key]["width"], width=10).grid(row=row, column=3, padx=4, pady=2)
             row += 1
         
-        ttk.Button(input_frame, text="Oblicz obróbki", command=self._calculate_flashings).grid(row=row, column=0, columnspan=4, pady=8)
+        # Calculate button
+        btn_frame = ttk.Frame(self.flashing_frame)
+        btn_frame.pack(fill="x", padx=10, pady=8)
+        ttk.Button(btn_frame, text="Oblicz obróbki", command=self._calculate_flashings).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Odśwież listę", command=self._refresh_flashing_list).pack(side="left", padx=4)
         
         # Results frame
         results_frame = ttk.LabelFrame(self.flashing_frame, text="Wyniki obliczeń")
-        results_frame.pack(fill="both", expand=True, padx=10, pady=8)
+        results_frame.pack(fill="x", padx=10, pady=8)
         
-        self.flashing_results_text = tk.Text(results_frame, height=8, state="disabled")
+        self.flashing_results_text = tk.Text(results_frame, height=6, state="disabled")
         self.flashing_results_text.pack(fill="both", expand=True, padx=4, pady=4)
         
         # Button to transfer to cost estimate
@@ -1055,20 +1095,158 @@ Powierzchnia siatki z klejem: {results.get('total_mesh_surface_m2', 0):.2f} m²
         
         self.flashing_last_results = None
     
+    def _refresh_flashing_list(self):
+        """Refresh the flashing list after modifications"""
+        # This would recreate the flashing tab - simplified version just shows message
+        messagebox.showinfo("Odśwież", "Przejdź do innej zakładki i wróć, aby odświeżyć listę obróbek")
+    
+    def _manage_flashing_definitions(self):
+        """Dialog for managing custom flashing definitions"""
+        from flashing_definitions import FLASHING_MATERIALS
+        
+        dlg = tk.Toplevel(self.master)
+        dlg.title("Zarządzanie definicjami obróbek")
+        dlg.geometry("800x500")
+        
+        # List of flashings
+        list_frame = ttk.Frame(dlg)
+        list_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        cols = ("name", "width", "material", "custom")
+        tree = ttk.Treeview(list_frame, columns=cols, show="headings", selectmode="browse")
+        tree.heading("name", text="Nazwa")
+        tree.heading("width", text="Szerokość rozwoju [m]")
+        tree.heading("material", text="Materiał")
+        tree.heading("custom", text="Własna?")
+        tree.column("name", width=250)
+        tree.column("width", width=150)
+        tree.column("material", width=200)
+        tree.column("custom", width=100)
+        tree.pack(fill="both", expand=True)
+        
+        def populate():
+            for iid in tree.get_children():
+                tree.delete(iid)
+            all_flashings = self.flashing_manager.get_all_flashings()
+            for key, flashing in all_flashings.items():
+                is_custom = "Tak" if self.flashing_manager.is_custom(key) else "Nie"
+                material_key = flashing.get("material", "blacha_powlekana")
+                material_name = FLASHING_MATERIALS.get(material_key, {}).get("name", material_key)
+                tree.insert("", "end", iid=key, values=(
+                    flashing.get("name", key),
+                    f"{flashing.get('default_width_m', 0.33):.2f}",
+                    material_name,
+                    is_custom
+                ))
+        
+        populate()
+        
+        # Buttons
+        btn_frame = ttk.Frame(dlg)
+        btn_frame.pack(fill="x", padx=10, pady=10)
+        ttk.Button(btn_frame, text="Dodaj własną", command=lambda: add_custom()).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Edytuj", command=lambda: edit_flashing()).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Usuń własną", command=lambda: delete_custom()).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Zamknij", command=dlg.destroy).pack(side="right", padx=4)
+        
+        def add_custom():
+            edit_dlg = FlashingEditDialog(dlg, "Nowa obróbka")
+            if getattr(edit_dlg, "result", None):
+                result = edit_dlg.result
+                key = result["name"].lower().replace(" ", "_")
+                self.flashing_manager.add_custom_flashing(key, result)
+                populate()
+        
+        def edit_flashing():
+            sel = tree.selection()
+            if not sel:
+                messagebox.showwarning("Brak zaznaczenia", "Wybierz obróbkę")
+                return
+            key = sel[0]
+            all_flashings = self.flashing_manager.get_all_flashings()
+            flashing = all_flashings.get(key)
+            if flashing:
+                edit_dlg = FlashingEditDialog(dlg, "Edytuj obróbkę", flashing)
+                if getattr(edit_dlg, "result", None):
+                    self.flashing_manager.add_custom_flashing(key, edit_dlg.result)
+                    populate()
+        
+        def delete_custom():
+            sel = tree.selection()
+            if not sel:
+                return
+            key = sel[0]
+            if not self.flashing_manager.is_custom(key):
+                messagebox.showwarning("Błąd", "Nie można usunąć predefiniowanej obróbki")
+                return
+            if messagebox.askyesno("Usuń", "Usunąć własną obróbkę?"):
+                self.flashing_manager.delete_custom_flashing(key)
+                populate()
+        
+        tree.bind("<Double-1>", lambda e: edit_flashing())
+    
+    def _open_length_calculator(self):
+        """Simple length calculator dialog"""
+        dlg = tk.Toplevel(self.master)
+        dlg.title("Kalkulator długości")
+        dlg.geometry("400x300")
+        
+        ttk.Label(dlg, text="Wprowadź wymiary do obliczenia długości:").pack(padx=10, pady=10)
+        
+        frame = ttk.Frame(dlg)
+        frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        dimensions = []
+        for i in range(5):
+            ttk.Label(frame, text=f"Odcinek {i+1} [m]:").grid(row=i, column=0, sticky="w", padx=4, pady=4)
+            entry = ttk.Entry(frame, width=15)
+            entry.grid(row=i, column=1, padx=4, pady=4)
+            entry.insert(0, "0")
+            dimensions.append(entry)
+        
+        result_label = ttk.Label(frame, text="Suma: 0.00 m", font=("Arial", 10, "bold"))
+        result_label.grid(row=6, column=0, columnspan=2, pady=10)
+        
+        def calculate():
+            total = 0.0
+            for entry in dimensions:
+                try:
+                    val = float(entry.get().replace(",", ".") or 0)
+                    total += val
+                except Exception:
+                    pass
+            result_label.config(text=f"Suma: {total:.2f} m")
+        
+        ttk.Button(frame, text="Oblicz", command=calculate).grid(row=7, column=0, columnspan=2, pady=10)
+        ttk.Button(dlg, text="Zamknij", command=dlg.destroy).pack(pady=10)
+    
     def _calculate_flashings(self):
         try:
+            from flashing_definitions import FLASHING_MATERIALS
+            
             flashing_items = {}
             for key, vars_dict in self.flashing_items_vars.items():
                 flashing_items[key] = {
                     "selected": vars_dict["selected"].get(),
                     "length": float(vars_dict["length"].get() or 0),
                     "width": float(vars_dict["width"].get() or 0),
+                    "name": vars_dict["name"]
                 }
             
             results = calculate_flashings_total(flashing_items)
+            
+            # Get selected material multiplier
+            selected_material_name = self.flashing_material.get()
+            material_key = next((k for k, v in FLASHING_MATERIALS.items() if v["name"] == selected_material_name), "blacha_powlekana")
+            material_multiplier = FLASHING_MATERIALS[material_key].get("price_multiplier", 1.0)
+            
             self.flashing_last_results = results
+            self.flashing_last_results["material"] = selected_material_name
+            self.flashing_last_results["material_multiplier"] = material_multiplier
+            self.flashing_last_results["items"] = flashing_items
             
             text = f"""Wyniki obliczeń obróbek blacharskich:
+Materiał: {selected_material_name}
 
 Całkowita powierzchnia blachy: {results['total_surface_m2']:.2f} m²
 Liczba arkuszy blachy (1,25x2,5m): {results['num_sheets']} szt.
@@ -1078,7 +1256,7 @@ Szczegóły zaznaczonych obróbek:
             for key, data in flashing_items.items():
                 if data["selected"]:
                     area = data["length"] * data["width"]
-                    text += f"  - {key}: {data['length']:.2f} m × {data['width']:.2f} m = {area:.2f} m²\n"
+                    text += f"  - {data['name']}: {data['length']:.2f} m × {data['width']:.2f} m = {area:.2f} m²\n"
             
             self.flashing_results_text.config(state="normal")
             self.flashing_results_text.delete("1.0", "end")
@@ -1096,13 +1274,109 @@ Szczegóły zaznaczonych obróbek:
             return
         
         r = self.flashing_last_results
+        material_name = r.get("material", "blacha_powlekana")
+        
         if r['total_surface_m2'] > 0:
-            item = {"name": "Blacha na obróbki", "quantity": r['total_surface_m2'], "unit": "m²", "price_unit_net": 0.0, "vat_rate": 23, "category": "material"}
-            self.cost_items.append(item)
+            # Option to add as single item or detailed
+            choice = messagebox.askyesnocancel("Dodaj obróbki", 
+                "Tak - dodaj jako pojedyncze pozycje\nNie - dodaj jako jeden komplet\nAnuluj - anuluj")
+            
+            if choice is None:  # Cancel
+                return
+            elif choice:  # Yes - detailed
+                for key, data in r.get("items", {}).items():
+                    if data.get("selected", False) and data.get("length", 0) > 0:
+                        area = data["length"] * data["width"]
+                        item = {
+                            "name": f"{data['name']} - {material_name}",
+                            "quantity": area,
+                            "unit": "m²",
+                            "price_unit_net": 0.0,
+                            "vat_rate": 23,
+                            "category": "material"
+                        }
+                        self.cost_items.append(item)
+            else:  # No - as set
+                item = {
+                    "name": f"Obróbki blacharskie - {material_name}",
+                    "quantity": r['total_surface_m2'],
+                    "unit": "m²",
+                    "price_unit_net": 0.0,
+                    "vat_rate": 23,
+                    "category": "material"
+                }
+                self.cost_items.append(item)
+            
             self._refresh_cost_ui()
-            messagebox.showinfo("Dodano", f"Blacha na obróbki ({r['total_surface_m2']:.2f} m²) dodana do kosztorysu. Uzupełnij cenę jednostkową.")
+            messagebox.showinfo("Dodano", "Obróbki dodane do kosztorysu. Uzupełnij ceny jednostkowe.")
         else:
             messagebox.showwarning("Brak danych", "Brak zaznaczonych obróbek do dodania.")
+
+
+class FlashingEditDialog(simpledialog.Dialog):
+    """Dialog for editing flashing definitions"""
+    def __init__(self, parent, title, flashing=None):
+        self.flashing = flashing or {}
+        super().__init__(parent, title)
+    
+    def body(self, master):
+        from flashing_definitions import FLASHING_MATERIALS
+        
+        ttk.Label(master, text="Nazwa:").grid(row=0, column=0, sticky="w", padx=4, pady=4)
+        self.e_name = ttk.Entry(master, width=40)
+        self.e_name.grid(row=0, column=1, padx=4, pady=4)
+        
+        ttk.Label(master, text="Opis:").grid(row=1, column=0, sticky="w", padx=4, pady=4)
+        self.e_description = ttk.Entry(master, width=40)
+        self.e_description.grid(row=1, column=1, padx=4, pady=4)
+        
+        ttk.Label(master, text="Szerokość rozwoju [m]:").grid(row=2, column=0, sticky="w", padx=4, pady=4)
+        self.e_width = ttk.Entry(master, width=15)
+        self.e_width.grid(row=2, column=1, padx=4, pady=4, sticky="w")
+        
+        ttk.Label(master, text="Materiał:").grid(row=3, column=0, sticky="w", padx=4, pady=4)
+        self.material_cb = ttk.Combobox(master, values=list(FLASHING_MATERIALS.keys()), width=20, state="readonly")
+        self.material_cb.grid(row=3, column=1, padx=4, pady=4, sticky="w")
+        
+        ttk.Label(master, text="Cena za mb [zł]:").grid(row=4, column=0, sticky="w", padx=4, pady=4)
+        self.e_price = ttk.Entry(master, width=15)
+        self.e_price.grid(row=4, column=1, padx=4, pady=4, sticky="w")
+        
+        # Fill in existing values
+        if self.flashing:
+            self.e_name.insert(0, self.flashing.get("name", ""))
+            self.e_description.insert(0, self.flashing.get("description", ""))
+            self.e_width.insert(0, str(self.flashing.get("default_width_m", 0.33)))
+            self.material_cb.set(self.flashing.get("material", "blacha_powlekana"))
+            self.e_price.insert(0, str(self.flashing.get("price_per_meter", 0.0)))
+        else:
+            self.e_width.insert(0, "0.33")
+            self.material_cb.set("blacha_powlekana")
+            self.e_price.insert(0, "0.0")
+        
+        return self.e_name
+    
+    def validate(self):
+        if not self.e_name.get().strip():
+            messagebox.showerror("Błąd", "Nazwa jest wymagana")
+            return False
+        try:
+            float(self.e_width.get().replace(",", "."))
+            float(self.e_price.get().replace(",", "."))
+        except Exception:
+            messagebox.showerror("Błąd", "Szerokość i cena muszą być liczbami")
+            return False
+        return True
+    
+    def apply(self):
+        self.result = {
+            "name": self.e_name.get().strip(),
+            "description": self.e_description.get().strip(),
+            "default_width_m": float(self.e_width.get().replace(",", ".")),
+            "material": self.material_cb.get(),
+            "price_per_meter": float(self.e_price.get().replace(",", ".")),
+            "unit": "mb"
+        }
 
     # cost tab UI with keyboard shortcuts and enhanced UI
     def create_cost_tab(self):
